@@ -2,7 +2,6 @@
 ## Imports ##
 #############
 
-from datetime import datetime
 from typing import Optional, Union
 from enum import Enum
 
@@ -42,6 +41,13 @@ class LoginRequest(BaseModel):
     email_id:str
     password:str
 
+class ForgotPasswordRequest(BaseModel):
+    email_id:str
+
+class ResetPasswordRequest(BaseModel):
+    email_id:str
+    code:str
+    new_password:str
 
 class PaginationData(BaseModel):
     items_per_page:Optional[int]

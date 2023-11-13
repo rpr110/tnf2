@@ -24,6 +24,8 @@ class ServiceMaster(Base,SerializerMixin):
 class BankTypeMaster(Base,SerializerMixin):
     __table__ = metadata.tables['Bank_Type_Master']
 
+class VerificationCode(Base,SerializerMixin):
+    __table__ = metadata.tables['Verification_Code']
 
 
 class BillingFrequencyMaster(Base,SerializerMixin):

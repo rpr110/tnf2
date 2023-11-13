@@ -24,6 +24,8 @@ import time
 import uuid
 import base64
 from typing import Union
+import datetime
+import pytz
 
 from sqlalchemy import func
 
@@ -45,6 +47,9 @@ from app.utils.utils import *
 api = APIRouter(default_response_class=ORJSONResponse)
 
 
+###########
+## Login ##
+###########
 
 @api.post("/login")
 def login(req_body:LoginRequest=Body(...)):
@@ -111,6 +116,125 @@ def login(req_body:LoginRequest=Body(...)):
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
     
+
+@api.post("/forgot_password")
+def forgot_password(req_body:ForgotPasswordRequest=Body(...)):
+    
+    # Create request_id
+    _id = str(uuid.uuid4())
+
+    # Check if user exists
+    with database_client.Session() as session:
+        employee_data = session.query(
+            Employee
+        ).filter(
+            Employee.email_id == req_body.email_id
+        ).first()
+
+        if not employee_data or not employee_data.is_active:
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="invalid credentials"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="invalid credentials"
+                )
+            )
+
+            return ORJSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=_content.model_dump())
+        
+        # Create Verification code
+        verification_code = create_verification_code(6)
+
+        verification_code_data = session.query(
+            VerificationCode
+        ).filter(
+            VerificationCode.email_id  == req_body.email_id
+        ).first()
+
+        if verification_code_data:
+            verification_code_data._code = verification_code
+        else:
+            new_verification_code = VerificationCode(email_id=req_body.email_id, _code=verification_code)
+            session.add(new_verification_code)
+
+        session.commit()
+        
+        # Send EMAIL
+        send_mail(req_body.email_id, "Verification Code", f"Your Verification Code: {verification_code}")
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=True,
+            message=f"verification code sent to {req_body.email_id}"
+        ),
+        data=None,
+        error=None
+    )
+
+    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+
+
+@api.post("/reset_password")
+def reset_password(req_body:ResetPasswordRequest = Body(...)):
+    # Create request_id
+    _id = str(uuid.uuid4())
+
+    # Check if user exists
+    with database_client.Session() as session:
+        verification_code_data = session.query(
+            VerificationCode
+        ).filter(
+            VerificationCode.email_id == req_body.email_id
+        ).first()
+
+        # verification_code_is_expired = ( datetime.datetime.now(pytz.utc) - verification_code_data.create_date.astimezone(pytz.utc) > datetime.timedelta(minutes=5) )
+        verification_code_is_expired = False
+        if not verification_code_data or verification_code_is_expired or verification_code_data._code != req_body.code:
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="invalid credentials"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="invalid credentials"
+                )
+            )
+
+            return ORJSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=_content.model_dump())
+        
+        # Change password
+        employee_data = session.query(
+            Employee
+        ).filter(
+            Employee.email_id  == req_body.email_id
+        ).first()
+
+        employee_data.password = req_body.new_password
+
+        session.commit()
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=True,
+            message=f"password updated for {req_body.email_id}"
+        ),
+        data=None,
+        error=None
+    )
+
+    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+
+#############
+## Profile ##
+#############
 
 @api.get("/employees")
 def get_all_employees(
@@ -307,3 +431,14 @@ def delete_employee(
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
+
+###############
+## Dashboard ##
+###############
+
+...
+
+
+####################
+## Control Center ##
+####################

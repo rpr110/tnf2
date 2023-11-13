@@ -46,5 +46,5 @@ COPY logs logs
 COPY run.py run.py
 EXPOSE 8000
 
-CMD ["python","app.py"]
+CMD ["python","run.py"]
 # CMD ["gunicorn", "run:app", "-w", "3", "--worker-class", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000","--timeout","600"]
