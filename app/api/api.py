@@ -29,7 +29,8 @@ import pytz
 
 from sqlalchemy import func
 
-from fastapi import APIRouter, Body, Depends, File, UploadFile, Form, Query, status, Request, Path
+
+from fastapi import APIRouter, Body, Depends, File, UploadFile, Form, Query, status, Request, Path, Header
 from fastapi.responses import ORJSONResponse
 
 from app.utils.dependencies import generateJwtToken, decodeJwtTokenDependancy
@@ -236,6 +237,37 @@ def reset_password(req_body:ResetPasswordRequest = Body(...)):
 ## Profile ##
 #############
 
+
+@api.get("/roles")
+def get_roles(
+    *,
+    x_verbose:bool=Header(False, alias='x-verbose'),
+
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    
+    _id = str(uuid.uuid4())
+    
+    with database_client.Session() as session:
+
+        non_verbose_data = (Roles.role_name, Roles.public_id)
+        role_data = session.query(Roles) if x_verbose else session.query( *non_verbose_data )
+        role_data = [data.to_dict() for data in role_data.all()] if x_verbose else [data._asdict() for data in role_data.all()] 
+        
+        _content = BaseResponse(
+            meta=BaseMeta(
+                _id=_id,
+                successful=True,
+                message="retrieved roles"
+            ),
+            data=role_data,
+            error=None
+        )
+
+    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+        
+
 @api.get("/employees")
 def get_all_employees(
     *,
@@ -430,6 +462,7 @@ def delete_employee(
     )
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+
 
 
 ###############
