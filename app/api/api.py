@@ -25,13 +25,15 @@ import uuid
 import base64
 from typing import Union
 import datetime
-import pytz
+
+import csv
+import io
 
 from sqlalchemy import func
 
 
 from fastapi import APIRouter, Body, Depends, File, UploadFile, Form, Query, status, Request, Path, Header
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import ORJSONResponse, StreamingResponse
 
 from app.utils.dependencies import generateJwtToken, decodeJwtTokenDependancy
 from app.utils.schema import *
@@ -51,6 +53,7 @@ api = APIRouter(default_response_class=ORJSONResponse)
 ###########
 ## Login ##
 ###########
+
 
 @api.post("/login")
 def login(req_body:LoginRequest=Body(...)):
@@ -117,7 +120,6 @@ def login(req_body:LoginRequest=Body(...)):
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
     
-
 @api.post("/forgot_password")
 def forgot_password(req_body:ForgotPasswordRequest=Body(...)):
     
@@ -179,7 +181,6 @@ def forgot_password(req_body:ForgotPasswordRequest=Body(...)):
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
-
 @api.post("/reset_password")
 def reset_password(req_body:ResetPasswordRequest = Body(...)):
     # Create request_id
@@ -233,6 +234,7 @@ def reset_password(req_body:ResetPasswordRequest = Body(...)):
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
+
 #############
 ## Profile ##
 #############
@@ -241,7 +243,7 @@ def reset_password(req_body:ResetPasswordRequest = Body(...)):
 @api.get("/roles")
 def get_roles(
     *,
-    x_verbose:bool=Header(False, alias='x-verbose'),
+    x_verbose:bool=Header(False, alias="x-verbose"),
 
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
@@ -271,11 +273,10 @@ def get_roles(
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
         
-
 @api.get("/employees")
 def get_all_employees(
     *,
-    x_verbose:bool=Header(True, alias='x-verbose'),
+    x_verbose:bool=Header(True, alias="x-verbose"),
 
     company_id:str=Query(...),
     page_no:int= Query(1),
@@ -363,11 +364,10 @@ def get_all_employees(
 
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
-
 @api.get("/employee/{employee_id}")
-def get_all_employees(
+def get_employee(
     *,
-    x_verbose:bool=Header(True, alias='x-verbose'),
+    x_verbose:bool=Header(True, alias="x-verbose"),
 
     employee_id:str=Path(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
@@ -452,7 +452,7 @@ def create_employee(
             _successful, _message, _error, _status_code = True, "created employee", None, status.HTTP_200_OK
 
         elif role_id == PortalRole.ADMIN.value:
-            if decoded_token.get("cid") != company_data.company_id:
+            if decoded_token.get("cid") != company_data.public_id:
                 _successful, _message, _error, _status_code = False, "unauthorized", BaseError(error_message="unauthorized"), status.HTTP_401_UNAUTHORIZED
             else:
                 employee_data = Employee(
@@ -484,7 +484,6 @@ def create_employee(
     )
 
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
 
 @api.put("/employee/{employee_id}")
 def modify_employee(
@@ -573,6 +572,7 @@ def update_password(
             employee_data = session.query(
                 Employee
             ).join(
+                Company,
                 Employee.company_id == Company.company_id
             ).filter(
                 Employee.public_id == employee_id,
@@ -599,6 +599,7 @@ def update_password(
             employee_data = session.query(
                 Employee
             ).join(
+                Company,
                 Employee.company_id == Company.company_id
             ).filter(
                 Employee.public_id == employee_id
@@ -635,7 +636,6 @@ def update_password(
 
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
-
 @api.delete("/employee/{employee_id}")
 def delete_employee(
     *,
@@ -659,6 +659,7 @@ def delete_employee(
             employee_data = session.query(
                 Employee
             ).join(
+                Company,
                 Employee.company_id == Company.company_id
             ).filter(
                 Employee.public_id == employee_id,
@@ -702,16 +703,379 @@ def delete_employee(
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
 
-
 ###############
 ## Dashboard ##
 ###############
 
 # Logs
-# Stats
-# Invoice
+@api.get("/nface_logs")
+def get_nface_logs(
+    *,
+    x_verbose:bool=Header(True, alias="x-verbose"),
+    x_ignore_pagination:bool=Header(False, alias="x-ignore-pagination"),
+    x_response_type:str=Header("json",alias="x-response-type"), # json/ csv/ excel
 
+    company_id:str=Query(...),
+    status_filter:str=Query(...), # success, all, failure, issue
+    service_filter:str=Query(...), # face_comparison , all , passive_liveness
+    start_datetime:datetime.datetime = Query(...),
+    end_datetime:datetime.datetime = Query(...),
+    page_no:int= Query(1),
+    items_per_page:int= Query(15),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+        
+        log_data = session.query(
+            NFaceLogs,
+        )
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            if company_id != "all":
+                log_data = log_data.join(
+                    Company,
+                    Company.company_id == NFaceLogs.company_id
+                ).filter(
+                    Company.public_id == company_id
+                )
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+            if company_id != decoded_token.get("cid") or company_id=="all":
+                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
+                _content = BaseResponse(
+                    meta=BaseMeta(
+                        _id=_id,
+                        successful=_successful,
+                        message=_message
+                    ),
+                    data=None,
+                    error=_error
+                )
+
+                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+            else:
+                log_data = log_data.join(
+                    Company,
+                    Company.company_id == NFaceLogs.company_id
+                ).filter(
+                    Company.public_id == company_id
+                )
+        
+
+        if status_filter != "all":
+            log_data = log_data.join(
+                StatusMaster,
+                StatusMaster.status_id == NFaceLogs.status_id
+            ).filter(StatusMaster.status == status_filter.upper().strip())
+
+
+        if service_filter != "all":
+            log_data = log_data.join(
+                ServiceMaster,
+                ServiceMaster.service_id == NFaceLogs.service_id
+            ).filter(ServiceMaster.service_name == service_filter.upper().strip())
+
+
+        log_data = log_data.filter(NFaceLogs.create_date >= start_datetime,
+                                NFaceLogs.create_date <= end_datetime)
+        
+        
+        total_count = log_data.with_entities(func.count()).scalar()
+
+        # Pagination
+        if not x_ignore_pagination:
+            offset = (page_no - 1) * items_per_page
+            log_data = log_data.order_by(NFaceLogs.create_date).offset(offset).limit(items_per_page)
+
+        if log_data:
+            log_data = log_data.all()
+            log_data = [ data.to_dict() for data in log_data ]
+
+    exclude_data_keys = ("company_id","service_id","status_id","service.service_id","status.status_id","_id","company.company_id","company.billing_id","company.billing_information")
+    for i in range(len(log_data)):
+        remove_keys_from_dict(log_data[i],exclude_data_keys)
+
+    if x_response_type == "json":
+        _content = PaginationResponse(
+            meta=PaginationMeta(
+                _id=_id,
+                successful=True,
+                message=None,
+                pagination_data=PaginationData(
+                    items_per_page=items_per_page,
+                    page_no=page_no,
+                    total_count=total_count,
+                    page_url=request.url._url
+                )
+            ),
+            data=log_data,
+            error=None
+        )
+
+        return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+
+    elif x_response_type == "csv":
+        
+        json_data = [
+            {"name": "John", "age": 30, "city": "New York"},
+            {"name": "Jane", "age": 25, "city": "San Francisco"},
+            {"name": "Bob", "age": 35, "city": "Chicago"}
+        ]
+
+        csv_data = io.StringIO()
+        csv_writer = csv.DictWriter(csv_data, fieldnames=json_data[0].keys())
+        csv_writer.writeheader()
+        csv_writer.writerows(json_data)
+
+        # Create a streaming response
+        response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
+        response.headers["Content-Disposition"] = "attachment;filename=output.csv"
+        return response
+
+# Stats
+@api.get("/nface_logs/stats")
+def get_nface_stats(
+    *,
+    company_id:str=Query(...), # all / company_id
+    start_datetime:datetime.datetime = Query(...),
+    end_datetime:datetime.datetime = Query(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request
+):
+    _id = str(uuid.uuid4())
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+        
+        query = session.query(
+            ServiceMaster.service_name,
+            StatusMaster.status,
+            func.count().label('count')
+        ).join(
+           NFaceLogs,
+           StatusMaster.status_id==NFaceLogs.status_id
+        ).join(
+           ServiceMaster,
+           ServiceMaster.service_id==NFaceLogs.service_id
+        )
+
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            if company_id != "all":
+                query = query.join(Company, Company.company_id == NFaceLogs.company_id).filter(Company.public_id == company_id)
+
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+            if company_id != decoded_token.get("cid") or company_id == "all":
+                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
+                _content = BaseResponse(
+                    meta=BaseMeta(
+                        _id=_id,
+                        successful=_successful,
+                        message=_message
+                    ),
+                    data=None,
+                    error=_error
+                )
+                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+            query = query.join(Company, Company.company_id == NFaceLogs.company_id).filter(Company.public_id == company_id)
+
+    
+        query = query.filter(NFaceLogs.create_date >= start_datetime,
+                                NFaceLogs.create_date <= end_datetime)
+
+        # Add grouping and ordering
+        query = query.group_by(ServiceMaster.service_name, StatusMaster.status,)
+
+
+        stat_dict = lambda x : {"FAILURE":x.get("FAILURE",0),"SUCCESS":x.get("SUCCESS",0),"ISSUE":x.get("ISSUE",0)}
+        if query:
+            query = query.all()
+            nested_dict = {}
+            for outer_key, inner_key, value in query:
+                if outer_key not in nested_dict:
+                    nested_dict[outer_key] = {}
+                nested_dict[outer_key][inner_key] = value
+
+        for k,v in nested_dict.items():
+            nested_dict[k] = stat_dict(v)
+
+        _successful, _message, _error, _status_code = True, None, None, status.HTTP_200_OK
+        _content = BaseResponse(
+            meta=BaseMeta(
+                _id=_id,
+                successful=_successful,
+                message=_message
+            ),
+            data=nested_dict,
+            error=_error
+        )
+        return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+# Invoice
+@api.get("/invoice")
+def get_invoice(
+    *,
+
+    company_id:str=Query("all"),
+    status_filter:str=Query("all"), # pending, all, paid
+    start_datetime:datetime.datetime = Query(...),
+    end_datetime:datetime.datetime = Query(...),
+    page_no:int= Query(1),
+    items_per_page:int= Query(15),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request
+
+):
+    _id = str(uuid.uuid4())
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+        
+        query = session.query(
+            Invoice,
+            BankTypeMaster.bank_type
+        ).join(
+            CompanyBankingInfo,
+            CompanyBankingInfo.company_id==Invoice.company_id
+        ).join(
+            BankTypeMaster,
+            BankTypeMaster.bank_type_id == CompanyBankingInfo.bank_type_id
+        )
+
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            if company_id != "all":
+                query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
+
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+            if company_id != decoded_token.get("cid") or company_id == "all":
+                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
+                _content = BaseResponse(
+                    meta=BaseMeta(
+                        _id=_id,
+                        successful=_successful,
+                        message=_message
+                    ),
+                    data=None,
+                    error=_error
+                )
+                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+            
+            query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
+
+        
+        if status_filter != "all":
+            sf = 1 if status_filter.upper().strip() == "PAID" else 0
+            query = query.filter(Invoice.payment_status == sf)
+
+
+        query = query.filter(Invoice.create_date >= start_datetime,
+                                Invoice.create_date <= end_datetime)
+
+
+        offset = (page_no - 1) * items_per_page
+        query = query.order_by(Invoice.create_date).offset(offset).limit(items_per_page)
+
+        query = query.all()
+        if query:
+            query = [ {**q[0].to_dict(), "bank_type":q[-1]} for q in query ]
+
+    exclude_data_keys = ("invoice_id","company_id","company.company_id","company.billing_id","company.billing_information")
+    for i in range(len(query)):
+        remove_keys_from_dict(query[i],exclude_data_keys)
+
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=True,
+            message=None
+        ),
+        data=query,
+        error=None
+    )
+    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+
+
+# Invoice
+@api.get("/invoice/stats")
+def get_invoice_stats(
+    *,
+    company_id:str=Query("all"),
+    start_datetime:datetime.datetime = Query(...),
+    end_datetime:datetime.datetime = Query(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request
+):
+    
+    _id = str(uuid.uuid4())
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+
+        # Perform the query using SQLAlchemy
+        query = session.query(
+            Invoice.payment_status,
+            func.count(Invoice.payment_status).label('count'),
+            func.sum(Invoice.amount).label('total_amount')
+        )
+
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            if company_id != "all":
+                query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
+
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+            if company_id != decoded_token.get("cid") or company_id == "all":
+                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
+                _content = BaseResponse(
+                    meta=BaseMeta(
+                        _id=_id,
+                        successful=_successful,
+                        message=_message
+                    ),
+                    data=None,
+                    error=_error
+                )
+                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+            
+            query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
+
+
+        query = query.filter(NFaceLogs.create_date >= start_datetime,
+                                NFaceLogs.create_date <= end_datetime)
+
+        query = query.group_by(Invoice.payment_status)
+
+        query = query.all()
+        if query:
+            nested_dict = {}
+            for _status, _count, _amount in query:
+                _status_name = "PAID" if _status == 1 else "PENDING"
+                nested_dict[_status_name] = {}
+                nested_dict[_status_name]["total_count"] = _count
+                nested_dict[_status_name]["total_amount"] = _amount
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=True,
+            message=None
+        ),
+        data=nested_dict,
+        error=None
+    )
+    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+            
+    
 ####################
 ## Control Center ##
 ####################
 
+# CRUD Company
