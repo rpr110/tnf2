@@ -330,7 +330,9 @@ def get_all_employees(
                 return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
         
 
-        total_count = employee_data.with_entities(func.count()).scalar()
+        # total_count = employee_data.with_entities(func.count()).scalar()
+        total_count = session.query(func.count()).select_from(Employee).scalar()
+
         # Pagination
         offset = (page_no - 1) * items_per_page
         employee_data = employee_data.order_by(Employee.create_date).offset(offset).limit(items_per_page)
@@ -788,7 +790,9 @@ def get_nface_logs(
                                 NFaceLogs.create_date <= end_datetime)
         
         
-        total_count = log_data.with_entities(func.count()).scalar()
+        # total_count = log_data.with_entities(func.count()).scalar()
+        total_count = session.query(func.count()).select_from(NFaceLogs).scalar()
+
 
         # Pagination
         if not x_ignore_pagination:
@@ -1121,14 +1125,14 @@ def bank_type(
         if bank_type_data:
             bank_type_data = bank_type_data.all()
             dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-            company_data = dictify(company_data, x_verbose)
+            bank_type_data = dictify(bank_type_data, x_verbose)
 
             if x_verbose:
-                exclude_data_keys = ("bank_type_id")
-                for i in range(len(company_data)):
-                    remove_keys_from_dict(company_data[i],exclude_data_keys)
+                exclude_data_keys = ("bank_type_id",)
+                for i in range(len(bank_type_data)):
+                    remove_keys_from_dict(bank_type_data[i],exclude_data_keys)
 
-            _successful, _message, _data, _error, _status_code = True, None, company_data, None, status.HTTP_200_OK
+            _successful, _message, _data, _error, _status_code = True, None, bank_type_data, None, status.HTTP_200_OK
         else:
             _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
 
@@ -1162,7 +1166,7 @@ def billing_frequency(
         non_verbose_data = (BillingFrequencyMaster.public_id, BillingFrequencyMaster.billing_frequency,)
         data_to_query = (BillingFrequencyMaster,) if x_verbose else non_verbose_data
 
-        bank_type_data = session.query(
+        billing_frequency_data = session.query(
             *data_to_query
         )
 
@@ -1183,17 +1187,17 @@ def billing_frequency(
             return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
         
 
-        if bank_type_data:
-            bank_type_data = bank_type_data.all()
+        if billing_frequency_data:
+            billing_frequency_data = billing_frequency_data.all()
             dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-            company_data = dictify(company_data, x_verbose)
+            billing_frequency_data = dictify(billing_frequency_data, x_verbose)
 
             if x_verbose:
-                exclude_data_keys = ("billing_frequency_id")
-                for i in range(len(company_data)):
-                    remove_keys_from_dict(company_data[i],exclude_data_keys)
+                exclude_data_keys = ("billing_frequency_id",)
+                for i in range(len(billing_frequency_data)):
+                    remove_keys_from_dict(billing_frequency_data[i],exclude_data_keys)
 
-            _successful, _message, _data, _error, _status_code = True, None, company_data, None, status.HTTP_200_OK
+            _successful, _message, _data, _error, _status_code = True, None, billing_frequency_data, None, status.HTTP_200_OK
         else:
             _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
 
@@ -1330,12 +1334,12 @@ def get_company(
         
 
         if company_data:
-            company_data = company_data.fliter(Company.public_id == company_id).first()
-            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
+            company_data = company_data.filter(Company.public_id == company_id).first()
+            dictify = lambda data,is_verbose : [i.to_dict() for i in [data]] if is_verbose else [i._asdict() for i in [data]]
             company_data = dictify(company_data, x_verbose)
 
             if x_verbose:
-                exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
+                exclude_data_keys = ("company_id", "billing_id","billing_information.billing_frequency_id","billing_information.billing_id","billing_information.currency_id","billing_information.currency.currency_id","billing_information.billing_frequency.billing_frequency_id","banking_info.company_id","banking_info.bank_type_id","banking_info.bank_type.bank_type_id")
                 for i in range(len(company_data)):
                     remove_keys_from_dict(company_data[i],exclude_data_keys)
 
@@ -1393,6 +1397,9 @@ def onboard_client(
 
             session.add(billing_data)
 
+            session.flush()
+
+
             company_data = Company(
                 company_name=req_body.company_name,
                 is_active=True,
@@ -1423,6 +1430,8 @@ def onboard_client(
 
             session.add(company_banking_data)
             
+            session.flush()
+
             _successful, _message, _error, _status_code = True, "created client", None, status.HTTP_200_OK
 
             
@@ -1441,14 +1450,20 @@ def onboard_client(
             return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
     
         session.commit()
+
+
+        _data = company_data.to_dict()
     
+        exclude_data_keys = ("company_id", "billing_id","billing_information.billing_frequency_id","billing_information.billing_id","billing_information.currency_id","billing_information.currency.currency_id","billing_information.billing_frequency.billing_frequency_id","banking_info.company_id","banking_info.bank_type_id","banking_info.bank_type.bank_type_id")
+        remove_keys_from_dict(_data,exclude_data_keys)
+
     _content = BaseResponse(
         meta=BaseMeta(
             _id=_id,
             successful=_successful,
             message=_message
         ),
-        data=None,
+        data=_data,
         error=_error
     )
 
@@ -1493,9 +1508,8 @@ def update_company(
         session.commit()
     
         _data = _data.to_dict()
-        exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
-        for i in range(len(_data)):
-            remove_keys_from_dict(_data[i],exclude_data_keys)
+        exclude_data_keys = ("company_id", "billing_id","billing_information.billing_frequency_id","billing_information.billing_id","billing_information.currency_id","billing_information.currency.currency_id","billing_information.billing_frequency.billing_frequency_id","banking_info.company_id","banking_info.bank_type_id","banking_info.bank_type.bank_type_id")
+        remove_keys_from_dict(_data,exclude_data_keys)
 
 
     _content = BaseResponse(
@@ -1570,9 +1584,8 @@ def update_company_billing(
         session.commit()
     
         _data = _data.to_dict()
-        exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
-        for i in range(len(_data)):
-            remove_keys_from_dict(_data[i],exclude_data_keys)
+        exclude_data_keys = ("company_id", "billing_id","billing_information.billing_frequency_id","billing_information.billing_id","billing_information.currency_id","billing_information.currency.currency_id","billing_information.billing_frequency.billing_frequency_id","banking_info.company_id","banking_info.bank_type_id","banking_info.bank_type.bank_type_id")
+        remove_keys_from_dict(_data,exclude_data_keys)
 
 
     _content = BaseResponse(
@@ -1649,9 +1662,8 @@ def update_company_billing(
         session.commit()
     
         _data = _data.to_dict()
-        exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
-        for i in range(len(_data)):
-            remove_keys_from_dict(_data[i],exclude_data_keys)
+        exclude_data_keys = ("company_id", "billing_id","billing_information.billing_frequency_id","billing_information.billing_id","billing_information.currency_id","billing_information.currency.currency_id","billing_information.billing_frequency.billing_frequency_id","banking_info.company_id","banking_info.bank_type_id","banking_info.bank_type.bank_type_id")
+        remove_keys_from_dict(_data,exclude_data_keys)
 
 
     _content = BaseResponse(
@@ -1670,7 +1682,6 @@ def update_company_billing(
 @api.delete("/company/{company_id}")
 def delete_company(
     *,
-    x_verbose:bool=Header(True, alias="x-verbose"),
 
     company_id:str=Path(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
