@@ -2,6 +2,7 @@
 ## Imports ##
 #############
 
+import datetime
 from typing import Optional, Union
 from enum import Enum
 
@@ -83,3 +84,58 @@ class CreateEmployeeRequest(BaseModel):
     employee_profile_pic:Optional[str]
     company_id:str
     role_id:str
+
+class RegisterClientRequest(BaseModel):
+    # Billing Info
+    email_id:str
+    fc_cpr:Optional[float]
+    pl_cpr:Optional[float]
+    floor_cost:Optional[float]
+    # currency_id:Optional[float]
+    billing_start_date:Optional[datetime.datetime]
+    billing_end_date:Optional[datetime.datetime]
+    billing_frequency_id:Optional[str]
+    # is_public:Optional[bool]
+
+    # Company Info
+    company_name:str
+
+    # Company Banking Info
+    bank_type_id:Optional[str]
+    routing_number:Optional[str]
+    product_code:Optional[str]
+    sort_code:Optional[str]
+    payee_beneficiary:Optional[str]
+    gateway_client_id:Optional[str]
+    institution_code:Optional[str]
+    billing_account_number:Optional[str]
+    billing_bank_code:Optional[str]
+    billing_account_name:Optional[str]
+
+class UpdateCompanyRequest(BaseModel):
+    company_name:str
+    is_active:bool
+
+class UpdateCompanyBillingRequest(BaseModel):
+    email_id:str
+    fc_cpr:Optional[float]
+    pl_cpr:Optional[float]
+    floor_cost:Optional[float]
+    # currency_id:Optional[float]
+    billing_start_date:Optional[datetime.datetime]
+    billing_end_date:Optional[datetime.datetime]
+    billing_frequency_id:Optional[str]
+    # is_public:Optional[bool]
+
+class UpdateCompanyBankingRequest(BaseModel):
+    # Company Banking Info
+    bank_type_id:Optional[str]
+    routing_number:Optional[str]
+    product_code:Optional[str]
+    sort_code:Optional[str]
+    payee_beneficiary:Optional[str]
+    gateway_client_id:Optional[str]
+    institution_code:Optional[str]
+    billing_account_number:Optional[str]
+    billing_bank_code:Optional[str]
+    billing_account_name:Optional[str]

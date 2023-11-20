@@ -535,6 +535,10 @@ def modify_employee(
             session.commit()
             _successful, _message, _error, _status_code = True, "updated", None, status.HTTP_200_OK
 
+        employee_data = employee_data.to_dict()
+        exclude_data_keys = ("company_id","employee_id","role_id","password","role.role_id","company.company_id","company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id")
+        for i in range(len(employee_data)):
+            remove_keys_from_dict(employee_data[i],exclude_data_keys)
 
     
     _content = BaseResponse(
@@ -543,7 +547,7 @@ def modify_employee(
             successful=_successful,
             message=_message
         ),
-        data=None,
+        data=employee_data,
         error=_error
     )
 
@@ -1001,7 +1005,6 @@ def get_invoice(
     )
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
-
 # Invoice
 @api.get("/invoice/stats")
 def get_invoice_stats(
@@ -1078,4 +1081,648 @@ def get_invoice_stats(
 ## Control Center ##
 ####################
 
+@api.get("/bank_type")
+def bank_type(
+    *,
+    x_verbose:bool=Header(True, alias="x-verbose"),
+
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        non_verbose_data = (BankTypeMaster.public_id, BankTypeMaster.bank_type,)
+        data_to_query = (BankTypeMaster,) if x_verbose else non_verbose_data
+
+        bank_type_data = session.query(
+            *data_to_query
+        )
+
+        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
+            ...
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+        
+
+        if bank_type_data:
+            bank_type_data = bank_type_data.all()
+            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
+            company_data = dictify(company_data, x_verbose)
+
+            if x_verbose:
+                exclude_data_keys = ("bank_type_id")
+                for i in range(len(company_data)):
+                    remove_keys_from_dict(company_data[i],exclude_data_keys)
+
+            _successful, _message, _data, _error, _status_code = True, None, company_data, None, status.HTTP_200_OK
+        else:
+            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
+
+    
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=_data,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+
+@api.get("/billing_frequency")
+def billing_frequency(
+    *,
+    x_verbose:bool=Header(True, alias="x-verbose"),
+
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        non_verbose_data = (BillingFrequencyMaster.public_id, BillingFrequencyMaster.billing_frequency,)
+        data_to_query = (BillingFrequencyMaster,) if x_verbose else non_verbose_data
+
+        bank_type_data = session.query(
+            *data_to_query
+        )
+
+        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
+            ...
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+        
+
+        if bank_type_data:
+            bank_type_data = bank_type_data.all()
+            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
+            company_data = dictify(company_data, x_verbose)
+
+            if x_verbose:
+                exclude_data_keys = ("billing_frequency_id")
+                for i in range(len(company_data)):
+                    remove_keys_from_dict(company_data[i],exclude_data_keys)
+
+            _successful, _message, _data, _error, _status_code = True, None, company_data, None, status.HTTP_200_OK
+        else:
+            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
+
+    
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=_data,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+
+
 # CRUD Company
+
+# Read Company
+@api.get("/company")
+def get_all_companies(
+    *,
+    x_verbose:bool=Header(True, alias="x-verbose"),
+    x_ignore_pagination:bool=Header(False, alias="x-ignore-pagination"),
+
+    page_no:int= Query(1),
+    items_per_page:int= Query(15),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        non_verbose_data = (Company.public_id, Company.company_name,)
+        data_to_query = (Company,) if x_verbose else non_verbose_data
+
+        company_data = session.query(
+            *data_to_query
+        )
+        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
+            ...
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+        
+
+        total_count = company_data.with_entities(func.count()).scalar()
+        
+        # Pagination
+        if not x_ignore_pagination:
+            offset = (page_no - 1) * items_per_page
+            company_data = company_data.order_by(Company.create_date).offset(offset).limit(items_per_page)
+
+        if company_data:
+            company_data = company_data.all()
+            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
+            company_data = dictify(company_data, x_verbose)
+
+            if x_verbose:
+                exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
+                for i in range(len(company_data)):
+                    remove_keys_from_dict(company_data[i],exclude_data_keys)
+
+    
+    _content = PaginationResponse(
+        meta=PaginationMeta(
+            _id=_id,
+            successful=True,
+            message=None,
+            pagination_data=PaginationData(
+                items_per_page=items_per_page,
+                page_no=page_no,
+                total_count=total_count,
+                page_url=request.url._url
+            )
+        ),
+        data=company_data,
+        error=None
+    )
+
+    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+
+@api.get("/company/{company_id}")
+def get_company(
+    *,
+    x_verbose:bool=Header(True, alias="x-verbose"),
+
+    company_id:str=Path(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        non_verbose_data = (Company.public_id, Company.company_name,)
+        data_to_query = (Company,) if x_verbose else non_verbose_data
+
+        company_data = session.query(
+            *data_to_query
+        )
+        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
+            ...
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+        
+
+        if company_data:
+            company_data = company_data.fliter(Company.public_id == company_id).first()
+            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
+            company_data = dictify(company_data, x_verbose)
+
+            if x_verbose:
+                exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
+                for i in range(len(company_data)):
+                    remove_keys_from_dict(company_data[i],exclude_data_keys)
+
+            _successful, _message, _data, _error, _status_code = True, None, company_data, None, status.HTTP_200_OK
+        else:
+            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
+
+    
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=_data,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+# Onboard Client
+@api.post("/register_client")
+def onboard_client(
+    *,
+    req_body:RegisterClientRequest=Body(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+
+            billing_frequency_data = session.query(
+                BillingFrequencyMaster
+            ).filter(
+                BillingFrequencyMaster.public_id==req_body.billing_frequency_id
+            ).first()
+
+            billing_data = BillingInformation(
+                billing_info_name=f"reg_{req_body.company_name}",
+                email_id1=req_body.email_id,
+                fc_cpr=req_body.fc_cpr,
+                pl_cpr=req_body.pl_cpr,
+                floor_cost=req_body.floor_cost,
+                currency_id=1,
+                billing_start_date=req_body.billing_start_date,
+                billing_end_date=req_body.billing_end_date,
+                billing_frequency_id=billing_frequency_data.billing_frequency_id,
+                is_public=0
+            )
+
+            session.add(billing_data)
+
+            company_data = Company(
+                company_name=req_body.company_name,
+                is_active=True,
+                billing_id=billing_data.billing_id
+            )
+
+            session.add(company_data)
+
+            bank_type_data = session.query(
+                BankTypeMaster
+            ).filter(
+                BankTypeMaster.public_id==req_body.bank_type_id
+            ).first()
+
+            company_banking_data = CompanyBankingInfo(
+                company_id = company_data.company_id,
+                bank_type_id = bank_type_data.bank_type_id,
+                routing_number= req_body.routing_number,
+                product_code= req_body.product_code,
+                sort_code= req_body.sort_code,
+                payee_beneficiary= req_body.payee_beneficiary,
+                gateway_client_id= req_body.gateway_client_id,
+                institution_code= req_body.institution_code,
+                billing_account_number= req_body.billing_account_number,
+                billing_bank_code= req_body.billing_bank_code,
+                billing_account_name= req_body.billing_account_name,
+            )
+
+            session.add(company_banking_data)
+            
+            _successful, _message, _error, _status_code = True, "created client", None, status.HTTP_200_OK
+
+            
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+    
+        session.commit()
+    
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=None,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+
+# # Update Company /company /company/billing /company/banking
+@api.put("/company/{company_id}")
+def update_company(
+    *,
+    company_id:str=Path(...),
+    req_body:UpdateCompanyRequest=Body(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            company_data = session.query(Company).filter(Company.public_id == company_id).first()
+            company_data.company_name = req_body.company_name
+            company_data.is_active = req_body.is_active
+            _successful, _message, _data, _error, _status_code = True, "updated", company_data, None, status.HTTP_200_OK
+
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+    
+        session.commit()
+    
+        _data = _data.to_dict()
+        exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
+        for i in range(len(_data)):
+            remove_keys_from_dict(_data[i],exclude_data_keys)
+
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=_data,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+
+@api.put("/company/{company_id}/billing")
+def update_company_billing(
+    *,
+    company_id:str=Path(...),
+    req_body:UpdateCompanyBillingRequest=Body(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            # company_data = session.query(Company).filter(Company.public_id == company_id).first()
+
+            company_data, billing_data = session.query(
+                Company,
+                BillingInformation
+            ).join(
+                Company,
+                BillingInformation.billing_id == Company.billing_id
+            ).filter(
+                Company.public_id==company_id
+            ).first()
+
+            billing_frequency_data = session.query(BillingFrequencyMaster).filter(BillingFrequencyMaster.public_id == req_body.billing_frequency_id).first()
+
+            billing_data.email_id=req_body.email_id
+            billing_data.fc_cpr=req_body.fc_cpr
+            billing_data.pl_cpr=req_body.pl_cpr
+            billing_data.floor_cost=req_body.floor_cost
+            # currency_id:Optional[float]
+            billing_data.billing_start_date=req_body.billing_start_date
+            billing_data.billing_end_date=req_body.billing_end_date
+            billing_data.billing_frequency_id=billing_frequency_data.billing_frequency_id
+            # is_public:Optional[bool]
+
+
+            _successful, _message, _data, _error, _status_code = True, "updated", company_data, None, status.HTTP_200_OK
+
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+    
+        session.commit()
+    
+        _data = _data.to_dict()
+        exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
+        for i in range(len(_data)):
+            remove_keys_from_dict(_data[i],exclude_data_keys)
+
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=_data,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+
+@api.put("/company/{company_id}/banking")
+def update_company_billing(
+    *,
+    company_id:str=Path(...),
+    req_body:UpdateCompanyBankingRequest=Body(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+
+    _id = str(uuid.uuid4())
+
+    role_id =  decoded_token.get("rid")
+
+    with database_client.Session() as session:
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            # company_data = session.query(Company).filter(Company.public_id == company_id).first()
+
+            company_data, banking_data = session.query(
+                Company,
+                CompanyBankingInfo
+            ).join(
+                CompanyBankingInfo,
+                CompanyBankingInfo.company_id == Company.company_id
+            ).filter(
+                Company.public_id==company_id
+            ).first()
+
+            bank_type_data = session.query(BankTypeMaster).filter(BankTypeMaster.public_id == req_body.bank_type_id).first()
+
+            banking_data.bank_type_id=bank_type_data.bank_type_id
+            banking_data.routing_number=req_body.routing_number
+            banking_data.product_code=req_body.product_code
+            banking_data.sort_code=req_body.sort_code
+            banking_data.payee_beneficiary=req_body.payee_beneficiary
+            banking_data.gateway_client_id=req_body.gateway_client_id
+            banking_data.institution_code=req_body.institution_code
+            banking_data.billing_account_number=req_body.billing_account_number
+            banking_data.billing_bank_code=req_body.billing_bank_code
+            banking_data.billing_account_name=req_body.billing_account_name
+
+
+            _successful, _message, _data, _error, _status_code = True, "updated", company_data, None, status.HTTP_200_OK
+
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=False,
+                    message="unauthorized"
+                ),
+                data=None,
+                error=BaseError(
+                    error_message="unauthorized"
+                )
+            )
+            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+    
+        session.commit()
+    
+        _data = _data.to_dict()
+        exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
+        for i in range(len(_data)):
+            remove_keys_from_dict(_data[i],exclude_data_keys)
+
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=_data,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+# Delete Company
+@api.delete("/company/{company_id}")
+def delete_company(
+    *,
+    x_verbose:bool=Header(True, alias="x-verbose"),
+
+    company_id:str=Path(...),
+    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    request:Request,
+):
+    _id = str(uuid.uuid4())
+    role_id =  decoded_token.get("rid")
+
+    
+    with database_client.Session() as session:
+
+        if role_id == PortalRole.SUPER_ADMIN.value:
+            company_data = session.query(
+                Company
+            ).filter(
+                Company.public_id == company_id
+            )
+
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+
+            _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
+            _content = BaseResponse(
+                meta=BaseMeta(
+                    _id=_id,
+                    successful=_successful,
+                    message=_message
+                ),
+                data=None,
+                error=_error
+            )
+
+            return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+
+
+        company_data = company_data.first()
+        if not company_data:
+            _successful, _message, _error, _status_code = False, "user not found", BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
+        else:
+            session.delete(company_data)
+            session.commit()
+            _successful, _message, _error, _status_code = True, "deleted", None, status.HTTP_200_OK
+
+
+    _content = BaseResponse(
+        meta=BaseMeta(
+            _id=_id,
+            successful=_successful,
+            message=_message
+        ),
+        data=None,
+        error=_error
+    )
+
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
