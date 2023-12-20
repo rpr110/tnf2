@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     db_name:str
     db_port:int
 
+    # Email Config
+    email_sender:str
+    email_password:SecretStr
+
     # Logging Config
     log_format:str
     log_file:str

@@ -14,6 +14,9 @@ metadata.reflect(bind=database_client.engine)
 Base = declarative_base()
 
 
+############
+## Models ##
+############
 
 class CurrencyMaster(Base,SerializerMixin):
     __table__ = metadata.tables['Currency_Master']
@@ -40,6 +43,7 @@ class BillingInformation(Base,SerializerMixin):
 class Company(Base,SerializerMixin):
     __table__ = metadata.tables['Company']
     billing_information = relationship("BillingInformation")
+    banking_information = relationship("CompanyBankingInfo", uselist=False)
 
 class Roles(Base,SerializerMixin):
     __table__ = metadata.tables['Roles']

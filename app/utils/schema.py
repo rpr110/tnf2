@@ -6,7 +6,7 @@ import datetime
 from typing import Optional, Union
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 ###########
@@ -139,3 +139,173 @@ class UpdateCompanyBankingRequest(BaseModel):
     billing_account_number:Optional[str]
     billing_bank_code:Optional[str]
     billing_account_name:Optional[str]
+
+
+
+#################################
+## SQLALCHEMY Model Formatters ##
+#################################
+
+class FormatterModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CurrencyMaster_MF(FormatterModel):
+    
+    # public_id:str
+    currency_id:str = Field(..., alias='public_id')
+    currency_name:str
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+class StatusMaster_MF(FormatterModel):
+
+    # public_id:str
+    status_id:str = Field(..., alias='public_id')
+    status:str
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+class ServiceMaster_MF(FormatterModel):
+
+    # public_id:str
+    service_id:str = Field(..., alias='public_id')
+    service_name:str
+    service_description:Optional[str]
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+class BankTypeMaster_MF(FormatterModel):
+
+    # public_id:str
+    bank_type_id:str = Field(..., alias='public_id')
+    bank_type:str
+    bank_type_description:Optional[None]
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+class BillingFrequencyMaster_MF(FormatterModel):
+    
+    # public_id:str
+    billing_frequency_id:str = Field(..., alias='public_id')
+    billing_frequency:str
+    billing_frequency_description:Optional[None]
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+class Roles_MF(FormatterModel):
+    # public_id:str
+    role_id:str = Field(..., alias='public_id')
+
+    role_name:str
+    role_description:Optional[None]
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+class VerificationCode_MF(FormatterModel):
+
+    email_id:str
+    _code:str
+    create_date:datetime.datetime
+
+class BillingInformation_MF(FormatterModel):
+
+    # public_id:str
+    billing_id:str = Field(..., alias='public_id')
+    billing_info_name:Optional[str]
+    email_id1:Optional[str]
+    fc_cpr:float
+    pl_cpr:float
+    floor_cost: Optional[float]
+    billing_start_date:datetime.datetime
+    billing_end_date:datetime.datetime
+    is_public:bool
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+    currency : Optional[CurrencyMaster_MF]
+    billing_frequency : Optional[BillingFrequencyMaster_MF]
+
+
+class CompanyBankingInfo_MF(FormatterModel):
+
+    routing_number:Optional[str]
+    product_code:Optional[str]
+    sort_code:Optional[str]
+    payee_beneficiary:Optional[str]
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+    gateway_client_id:Optional[str]
+    institution_code:Optional[str]
+    billing_account_number:Optional[str]
+    billing_bank_code:Optional[str]
+    billing_account_name:Optional[str]
+
+    bank_type:Optional[BankTypeMaster_MF]
+
+
+class Company_MF(FormatterModel):
+    
+    # public_id:str
+    company_id:str = Field(..., alias='public_id')
+    client_id: str
+    company_name: str
+    is_active:bool
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+    billing_information:Optional[BillingInformation_MF]
+    banking_information:Optional[CompanyBankingInfo_MF]
+
+
+class Employee_MF(FormatterModel):
+    # public_id:str
+    employee_id:str = Field(..., alias='public_id')
+
+    employee_name:Optional[str]
+    email_id:str
+    password:str
+    phone_number:Optional[str]
+    employee_profile_pic:Optional[bytes]
+    is_active:bool
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+    role:Optional[Roles_MF]
+    company:Optional[Company_MF]
+
+
+class NFaceLogs_MF(FormatterModel):
+
+    public_id:str
+    session_code:str
+    endpoint:str
+    user_id:Optional[str]
+
+    status_code:Optional[int]
+    ip_address:Optional[str]
+    output:Optional[str]
+    execution_time:Optional[float]
+    create_date:datetime.datetime
+    user_image:Optional[bytes]
+
+    company:Optional[Company_MF]
+    status:Optional[StatusMaster_MF]
+    service:Optional[ServiceMaster_MF]
+
+
+class Invoice_MF(FormatterModel):
+    # public_id:str
+    invoice_id:str = Field(..., alias='public_id')
+
+    start_date:datetime.datetime
+    end_date:datetime.datetime
+    total_non_issue_calls:int
+    amount:float
+    payment_status:bool
+    payment_date:Optional[datetime.datetime]
+
+    create_date:datetime.datetime
+    update_date:datetime.datetime
+
+    company:Optional[Company_MF]

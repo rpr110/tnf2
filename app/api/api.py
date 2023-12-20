@@ -1,35 +1,15 @@
-"""
-POST /login
-
-GET /employees
-GET /employee/employee_id
-POST /employee
-PUT /employee
-DELETE /employee
-
-POST /forgot_password
-POST /reset_password
-
-GET /logs
-GET /log/stats
-
-BILLING
-
-"""
 #############
 ## Imports ##
 #############
 
-import time
+import io
 import uuid
-import base64
-from typing import Union
+import csv
 import datetime
 
-import csv
-import io
 
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload, joinedload, aliased
 
 
 from fastapi import APIRouter, Body, Depends, File, UploadFile, Form, Query, status, Request, Path, Header
@@ -37,7 +17,7 @@ from fastapi.responses import ORJSONResponse, StreamingResponse
 
 from app.utils.dependencies import generateJwtToken, decodeJwtTokenDependancy
 from app.utils.schema import *
-from app import logger, database_client
+from app import database_client, email_client, otp_client
 from app.utils.models import *
 from app.utils.utils import *
 
@@ -55,70 +35,57 @@ api = APIRouter(default_response_class=ORJSONResponse)
 ###########
 
 
+# login api
 @api.post("/login")
 def login(req_body:LoginRequest=Body(...)):
     
+    # create request id
     _id = str(uuid.uuid4())
 
+    # create session with db
     with database_client.Session() as session:
+
+        # query the employee
         employee_data = session.query(
             Employee
+        ).options(
+            selectinload(Employee.role), selectinload(Employee.company)
         ).filter(
             Employee.email_id == req_body.email_id
         ).first()
 
+        # check if employee exists / wrong password / is active (ie. is account disabled)
         if not employee_data or employee_data.password != req_body.password or not employee_data.is_active:
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="invalid credentials"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="invalid credentials"
-                )
+
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message="invalid credentials")
+            _data = None
+            _error = BaseError(error_message="invalid credentials")
+            _status_code = status.HTTP_401_UNAUTHORIZED
+
+        else:        
+
+            # retrive all employee info and format the data
+            employee_data = Employee_MF.model_validate(employee_data).model_dump()
+
+            # create jwt token
+            jwt_token = generateJwtToken(
+                exp=100000,
+                uid=employee_data.get("employee_id"), # User ID
+                cid=employee_data.get("company",{}).get("company_id"), # Company ID
+                rid=employee_data.get("role",{}).get("role_id"), # Role ID
+                sid=_id
             )
 
-            return ORJSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=_content.model_dump())
-        
+            _response = TokenResponse
+            _meta = TokenMeta(_id=_id, successful=True, message="logged in", token=jwt_token)
+            _data = employee_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-        employee_data = employee_data.to_dict()
 
-        banking_info = session.query(
-            CompanyBankingInfo
-        ).filter(
-            CompanyBankingInfo.company_id == employee_data.get("company",{}).get("company_id",{})
-        ).order_by(
-            CompanyBankingInfo.update_date.desc()
-        ).first()
-
-        employee_data["company"]["banking_info"] = banking_info.to_dict() if banking_info else None
-
-    exclude_data_keys = ("company_id","employee_id","role_id","password","role.role_id","company.company_id","company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
-    remove_keys_from_dict(employee_data, exclude_data_keys)
-    employee_data = {"employee":employee_data}
-
-    jwt_token = generateJwtToken(
-        exp=100000,
-        uid=employee_data.get("employee").get("public_id"), # User ID
-        cid=employee_data.get("employee").get("company",{}).get("public_id"), # Company ID
-        rid=employee_data.get("employee").get("role",{}).get("public_id"), # Role ID
-        sid=_id
-    )
-
-    _content = TokenResponse(
-        meta=TokenMeta(
-            _id=_id,
-            successful=True,
-            message="login successful",
-            token=jwt_token
-        ),
-        data=employee_data,
-        error=None
-    )
-
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
     
 @api.post("/forgot_password")
 def forgot_password(req_body:ForgotPasswordRequest=Body(...)):
@@ -126,114 +93,92 @@ def forgot_password(req_body:ForgotPasswordRequest=Body(...)):
     # Create request_id
     _id = str(uuid.uuid4())
 
-    # Check if user exists
+    # create session with db
     with database_client.Session() as session:
+
+        # query the employee
         employee_data = session.query(
             Employee
         ).filter(
             Employee.email_id == req_body.email_id
         ).first()
 
+        # check if employee exists / is active
         if not employee_data or not employee_data.is_active:
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="invalid credentials"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="invalid credentials"
-                )
-            )
-
-            return ORJSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=_content.model_dump())
-        
-        # Create Verification code
-        verification_code = create_verification_code(6)
-
-        verification_code_data = session.query(
-            VerificationCode
-        ).filter(
-            VerificationCode.email_id  == req_body.email_id
-        ).first()
-
-        if verification_code_data:
-            verification_code_data._code = verification_code
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message="invalid credentials")
+            _data = None
+            _error = BaseError(error_message="invalid credentials")
+            _status_code = status.HTTP_401_UNAUTHORIZED
         else:
-            new_verification_code = VerificationCode(email_id=req_body.email_id, _code=verification_code)
-            session.add(new_verification_code)
+            # Create Verification code
+            verification_code = otp_client.create_verification_code(6)
 
-        session.commit()
-        
-        # Send EMAIL
-        send_mail(req_body.email_id, "Verification Code", f"Your Verification Code: {verification_code}")
+            # Create Verification code Session in DB
+            otp_client.create_verification_code_session(session, VerificationCode, req_body.email_id, verification_code)
+            
+            # Send EMAIL
+            email_client.send_mail(req_body.email_id, "Verification Code", f"Your Verification Code: {verification_code}")
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=True,
-            message=f"verification code sent to {req_body.email_id}"
-        ),
-        data=None,
-        error=None
-    )
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message="verification code sent")
+            _data = None
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 @api.post("/reset_password")
 def reset_password(req_body:ResetPasswordRequest = Body(...)):
-    # Create request_id
+    
+    # create request id
     _id = str(uuid.uuid4())
 
-    # Check if user exists
+    # create session with db
     with database_client.Session() as session:
+
+        # query verification code
         verification_code_data = session.query(
             VerificationCode
         ).filter(
             VerificationCode.email_id == req_body.email_id
         ).first()
 
+        # check if verification code is valid
         # verification_code_is_expired = ( datetime.datetime.now(pytz.utc) - verification_code_data.create_date.astimezone(pytz.utc) > datetime.timedelta(minutes=5) )
         verification_code_is_expired = False
         if not verification_code_data or verification_code_is_expired or verification_code_data._code != req_body.code:
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="invalid credentials"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="invalid credentials"
-                )
-            )
 
-            return ORJSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=_content.model_dump())
-        
-        # Change password
-        employee_data = session.query(
-            Employee
-        ).filter(
-            Employee.email_id  == req_body.email_id
-        ).first()
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message="invalid credentials")
+            _data = None
+            _error = BaseError(error_message="invalid credentials")
+            _status_code = status.HTTP_401_UNAUTHORIZED
 
-        employee_data.password = req_body.new_password
+        else:
 
-        session.commit()
+            # update password
+            employee_data = session.query(
+                Employee
+            ).filter(
+                Employee.email_id  == req_body.email_id
+            ).first()
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=True,
-            message=f"password updated for {req_body.email_id}"
-        ),
-        data=None,
-        error=None
-    )
+            employee_data.password = req_body.new_password
 
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+            session.commit()
 
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=f"password updated for {req_body.email_id}")
+            _data = None
+            _error = None
+            _status_code = status.HTTP_200_OK
+
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 
 #############
 ## Profile ##
@@ -244,189 +189,181 @@ def reset_password(req_body:ResetPasswordRequest = Body(...)):
 def get_roles(
     *,
     x_verbose:bool=Header(False, alias="x-verbose"),
-
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
-    request:Request,
 ):
     
+    # create request id
     _id = str(uuid.uuid4())
+    # get role of logged in user
     role_id = decoded_token.get("rid")
 
+    # create session with db
     with database_client.Session() as session:
 
-        non_verbose_data = (Roles.role_name, Roles.public_id)
+        non_verbose_data = (Roles.role_name, Roles.public_id.label("role_id"))
         data_to_query = (Roles,) if x_verbose else non_verbose_data
+
         role_data = session.query(*data_to_query)
         role_data = role_data.all() if role_id == PortalRole.SUPER_ADMIN.value else role_data.filter(Roles.public_id != PortalRole.SUPER_ADMIN.value).all()
-        dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-        role_data = dictify(role_data, x_verbose)
-        
-        _content = BaseResponse(
-            meta=BaseMeta(
-                _id=_id,
-                successful=True,
-                message="retrieved roles"
-            ),
-            data=role_data,
-            error=None
-        )
 
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+        role_data = [ Roles_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in role_data ] 
         
+    _response = BaseResponse
+    _meta = BaseMeta(_id=_id, successful=True, message="retrieved roles")
+    _data = role_data
+    _error = None
+    _status_code = status.HTTP_200_OK
+
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
+    
 @api.get("/employees")
 def get_all_employees(
     *,
     x_verbose:bool=Header(True, alias="x-verbose"),
-
     company_id:str=Query(...),
     page_no:int= Query(1),
     items_per_page:int= Query(15),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = str(uuid.uuid4())
-
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
 
-        non_verbose_data = (Employee.public_id, Employee.email_id, Employee.employee_name, Employee.phone_number)
-        data_to_query = (Employee,) if x_verbose else non_verbose_data
+    # check if non super admin + company_id == all or company_id != cid
+    if not (role_id != PortalRole.SUPER_ADMIN.value and (company_id != decoded_token.get("cid"))) and role_id in (_.value for _ in PortalRole)  :
 
-        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
-            if company_id == "all":
-                employee_data = session.query( *data_to_query )
-            else:
-                employee_data = session.query(
-                    *data_to_query
-                ).join(
+        # create session with db
+        with database_client.Session() as session:
+
+            # setup non verbose data
+            non_verbose_data = (Employee.public_id.label("employee_id"), Employee.email_id, Employee.employee_name, Employee.phone_number)
+            data_to_query = (Employee,) if x_verbose else non_verbose_data
+            query_options = (joinedload(Employee.role), joinedload(Employee.company), ) if x_verbose else ()
+
+            # basic query
+            query = session.query( *data_to_query ).options( *query_options )
+
+            if company_id != "all": 
+                # filter by company id
+                query = query.join(
                     Company,
                     Company.company_id == Employee.company_id
                 ).filter(
                     Company.public_id == company_id
                 )
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: # ADMIN
-            if company_id == decoded_token.get("cid"):
-                employee_data = session.query(
-                    *data_to_query
-                ).join(
-                    Company,
-                    Company.company_id == Employee.company_id
-                ).filter(
-                    Company.public_id == company_id
-                )
-            else:
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=False,
-                        message="unauthorized"
-                    ),
-                    data=None,
-                    error=BaseError(
-                        error_message="unauthorized"
-                    )
-                )
-                return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+            
+            # get total count for pagination
+            total_count = session.query(func.count()).select_from(Employee).scalar()
+
+            # pagination
+            offset = (page_no - 1) * items_per_page
+            query = query.order_by(Employee.create_date).offset(offset).limit(items_per_page)
+
+            # get all data
+            employee_data = query.all()
+
+            if employee_data:
+                # format data
+                employee_data = [  Employee_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in employee_data  ]
         
+        _response = PaginationResponse
+        _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
+        _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
+        _data = employee_data
+        _error = None
+        _status_code = status.HTTP_200_OK
 
-        # total_count = employee_data.with_entities(func.count()).scalar()
-        total_count = session.query(func.count()).select_from(Employee).scalar()
+    else:
 
-        # Pagination
-        offset = (page_no - 1) * items_per_page
-        employee_data = employee_data.order_by(Employee.create_date).offset(offset).limit(items_per_page)
-
-        if employee_data:
-            employee_data = employee_data.all()
-            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-            employee_data = dictify(employee_data, x_verbose)
-
-            if x_verbose:
-                exclude_data_keys = ("company_id","employee_id","role_id","password","role.role_id","company.company_id","company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id")
-                for i in range(len(employee_data)):
-                    remove_keys_from_dict(employee_data[i],exclude_data_keys)
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _data = None
+        _error = BaseError(error_message="unauthorized")
+        _status_code = status.HTTP_403_FORBIDDEN
 
     
-    _content = PaginationResponse(
-        meta=PaginationMeta(
-            _id=_id,
-            successful=True,
-            message=None,
-            pagination_data=PaginationData(
-                items_per_page=items_per_page,
-                page_no=page_no,
-                total_count=total_count,
-                page_url=request.url._url
-            )
-        ),
-        data=employee_data,
-        error=None
-    )
-
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 
 @api.get("/employee/{employee_id}")
 def get_employee(
     *,
     x_verbose:bool=Header(True, alias="x-verbose"),
-
     employee_id:str=Path(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
 ):
+    
+    # create request id
     _id = str(uuid.uuid4())
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    if  role_id not in (_.value for _ in PortalRole)  :
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _data = None
+        _error = BaseError(error_message="unauthorized")
+        _status_code = status.HTTP_403_FORBIDDEN
 
-        non_verbose_data = (Employee.public_id, Employee.email_id, Employee.employee_name, Employee.phone_number)
-        data_to_query = (Employee,) if x_verbose else non_verbose_data
+    else:
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
-            employee_data = session.query(
+        # create session with db
+        with database_client.Session() as session:
+
+            non_verbose_data = (Employee.public_id.label("employee_id"), Employee.email_id, Employee.employee_name, Employee.phone_number)
+            data_to_query = (Employee,) if x_verbose else non_verbose_data
+            query_options = (joinedload(Employee.role), joinedload(Employee.company), ) if x_verbose else ()
+
+            query = session.query(
                 *data_to_query
-            ).filter(
-                Employee.public_id == employee_id
-            )
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
-            employee_data = session.query(
-                *data_to_query
-            ).join(
-                Company,
-                Company.company_id == Employee.company_id
-            ).filter(
-                Employee.public_id == employee_id,
-                Company.public_id == decoded_token.get("cid")
+            ).options(
+                *query_options
             )
 
+            if role_id == PortalRole.SUPER_ADMIN.value:
+                
+                query = query.filter(
+                    Employee.public_id == employee_id
+                )
 
-        employee_data = employee_data.all()
+            elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+                
+                query = query.join(
+                    Company,
+                    Company.company_id == Employee.company_id
+                ).filter(
+                    Employee.public_id == employee_id,
+                    Company.public_id == decoded_token.get("cid")
+                )
 
-        if employee_data:
-            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-            employee_data = dictify(employee_data, x_verbose)
+            employee_data = query.first()
 
-            if x_verbose:
-                exclude_data_keys = ("company_id","employee_id","role_id","password","role.role_id","company.company_id","company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id")
-                for i in range(len(employee_data)):
-                    remove_keys_from_dict(employee_data[i],exclude_data_keys)
+            if employee_data:
+                employee_data = Employee_MF.model_validate(employee_data).model_dump() if x_verbose else employee_data._asdict()
 
-            _successful, _message, _data, _error, _status_code = True, None, employee_data, None, status.HTTP_200_OK
-        else:
-            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message=None)
+                _data = employee_data
+                _error = None
+                _status_code = status.HTTP_200_OK
 
-    
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
+            else:
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message="user not found")
+                _data = None
+                _error = BaseError(error_message="user not found")
+                _status_code = status.HTTP_404_NOT_FOUND
 
+
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 
 @api.post("/employee")
 def create_employee(
@@ -434,13 +371,28 @@ def create_employee(
     req_body:CreateEmployeeRequest=Body(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
 ):
+    # create request id
     _id = str(uuid.uuid4())
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
+    # create session with db
     with database_client.Session() as session:
+        # query company
         company_data = session.query(Company).filter(Company.public_id==req_body.company_id).first()
+        # query role
         role_data = session.query(Roles).filter(Roles.public_id==req_body.role_id).first()
-        if role_id == PortalRole.SUPER_ADMIN.value:
+        
+        # cheeck if role is valid or admin using differnt cid
+        if ( role_id not in (PortalRole.SUPER_ADMIN.value, PortalRole.ADMIN.value) ) or (role_id == PortalRole.ADMIN.value and decoded_token.get("cid") != company_data.public_id):
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+            _data = None
+            _error = BaseError(error_message="unauthorized")
+            _status_code = status.HTTP_403_FORBIDDEN
+
+        else:
+            # create employee object
             employee_data = Employee(
                 email_id=req_body.email_id,
                 password=req_body.password,
@@ -450,42 +402,22 @@ def create_employee(
                 company_id=company_data.company_id,
                 role_id=role_data.role_id
             )
+
+            # add employee to db
             session.add(employee_data)
-            _successful, _message, _error, _status_code = True, "created employee", None, status.HTTP_200_OK
+            session.commit()
+            session.refresh(employee_data)
 
-        elif role_id == PortalRole.ADMIN.value:
-            if decoded_token.get("cid") != company_data.public_id:
-                _successful, _message, _error, _status_code = False, "unauthorized", BaseError(error_message="unauthorized"), status.HTTP_401_UNAUTHORIZED
-            else:
-                employee_data = Employee(
-                    email_id=req_body.email_id,
-                    password=req_body.password,
-                    employee_name=req_body.employee_name,
-                    phone_number=req_body.phone_number,
-                    employee_profile_pic=req_body.employee_profile_pic,
-                    company_id=company_data.company_id,
-                    role_id=role_data.role_id
-                )
-                session.add(employee_data)
-                _successful, _message, _error, _status_code = True, "created employee", None, status.HTTP_200_OK
-            
-        elif role_id == PortalRole.EXPLORER.value:
-            _successful, _message, _error, _status_code = False, "unauthorized", BaseError(error_message="unauthorized"), status.HTTP_401_UNAUTHORIZED
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message="created")
+            _data = Employee_MF.model_validate(employee_data).model_dump()
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-        
-        session.commit()
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=None,
-        error=_error
-    )
-
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 
 @api.put("/employee/{employee_id}")
 def modify_employee(
@@ -494,66 +426,69 @@ def modify_employee(
     req_body:ModifyEmployeeDataRequest=Body(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
 ):
+    # create request id
     _id = str(uuid.uuid4())
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    if  role_id not in (_.value for _ in PortalRole) or  (role_id == PortalRole.EXPLORER.value and employee_id != decoded_token.get("uid")):
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _data = None
+        _error = BaseError(error_message="unauthorized")
+        _status_code = status.HTTP_403_FORBIDDEN
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
-            employee_data = session.query(
+    else:
+        # create session with db
+        with database_client.Session() as session:
+
+            query = session.query(
                 Employee
-            ).filter(
-                Employee.public_id == employee_id
             )
+            
+            if role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.EXPLORER.value:
+                employee_data = query.filter(
+                    Employee.public_id == employee_id
+                )
 
-        elif role_id == PortalRole.ADMIN.value:
-            employee_data = session.query(
-                Employee
-            ).join(
-                Employee.company_id == Company.company_id
-            ).filter(
-                Employee.public_id == employee_id,
-                Company.public_id == decoded_token.get("cid")
-            )
-        elif role_id == PortalRole.EXPLORER.value:
-            if employee_id != decoded_token.get("uid"):
-                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
-            employee_data = session.query(
-                Employee
-            ).join(
-                Employee.company_id == Company.company_id
-            ).filter(
-                Employee.public_id == employee_id
-            )
+            elif role_id == PortalRole.ADMIN.value:
+                employee_data = query.join(
+                    Company,
+                    Employee.company_id == Company.company_id
+                ).filter(
+                    Employee.public_id == employee_id,
+                    Company.public_id == decoded_token.get("cid")
+                )
 
-        employee_data = employee_data.first()
-        if not employee_data:
-            _successful, _message, _error, _status_code = False, "user not found", BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-        else:
-            employee_data.employee_name = req_body.employee_name
-            employee_data.phone_number = req_body.phone_number
-            employee_data.employee_profile_pic = req_body.employee_profile_pic
 
-            session.commit()
-            _successful, _message, _error, _status_code = True, "updated", None, status.HTTP_200_OK
+            employee_data = employee_data.first()
 
-        employee_data = employee_data.to_dict()
-        exclude_data_keys = ("company_id","employee_id","role_id","password","role.role_id","company.company_id","company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id")
-        for i in range(len(employee_data)):
-            remove_keys_from_dict(employee_data[i],exclude_data_keys)
+            if not employee_data:
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message="user not found")
+                _data = None
+                _error = BaseError(error_message="user not found")
+                _status_code = status.HTTP_404_NOT_FOUND
+            else:
+                employee_data.employee_name = req_body.employee_name
+                employee_data.phone_number = req_body.phone_number
+                employee_data.employee_profile_pic = req_body.employee_profile_pic
 
-    
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=employee_data,
-        error=_error
-    )
+                session.commit()
+                session.refresh(employee_data)
 
+                employee_data = Employee_MF.model_validate(employee_data).model_dump()
+
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message="updated")
+                _data = employee_data
+                _error = None
+                _status_code = status.HTTP_200_OK
+
+        
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 
 @api.put("/employee/{employee_id}/update_password")
 def update_password(
@@ -562,152 +497,133 @@ def update_password(
     req_body:ModifyEmployeePasswordRequest=Body(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
 ):
+     # create request id
     _id = str(uuid.uuid4())
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    if  role_id not in (_.value for _ in PortalRole) or  (role_id == PortalRole.EXPLORER.value and employee_id != decoded_token.get("uid")):
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _data = None
+        _error = BaseError(error_message="unauthorized")
+        _status_code = status.HTTP_403_FORBIDDEN
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
-            employee_data = session.query(
-                Employee
-            ).filter(
-                Employee.public_id == employee_id
-            )
+    else:
+        # create session with db
+        with database_client.Session() as session:
 
-        elif role_id == PortalRole.ADMIN.value:
-            employee_data = session.query(
+            query = session.query(
                 Employee
-            ).join(
-                Company,
-                Employee.company_id == Company.company_id
-            ).filter(
-                Employee.public_id == employee_id,
-                Company.public_id == decoded_token.get("cid")
             )
-        elif role_id == PortalRole.EXPLORER.value:
-            if employee_id != decoded_token.get("uid"):
-                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
             
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=_successful,
-                        message=_message
-                    ),
-                    data=None,
-                    error=_error
+            if role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.EXPLORER.value:
+                query = query.filter(
+                    Employee.public_id == employee_id
                 )
 
-                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+            elif role_id == PortalRole.ADMIN.value:
+                query = query.join(
+                    Company,
+                    Employee.company_id == Company.company_id
+                ).filter(
+                    Employee.public_id == employee_id,
+                    Company.public_id == decoded_token.get("cid")
+                )
 
 
-            
-            employee_data = session.query(
-                Employee
-            ).join(
-                Company,
-                Employee.company_id == Company.company_id
-            ).filter(
-                Employee.public_id == employee_id
-            )
+            employee_data = query.first()
 
-        employee_data = employee_data.first()
-        if not employee_data:
-            _successful, _message, _error, _status_code = False, "user not found", BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-        else:
-            if role_id == PortalRole.EXPLORER.value :
-                if req_body.old_password == employee_data.password:
-                    employee_data.password = req_body.new_password # change pass
-                    _successful, _message, _error, _status_code = True, "password updated", None, status.HTTP_200_OK
-                else:
-                    _successful, _message, _error, _status_code = False, "invalid credentials", BaseError(error_message="invalid credentials"), status.HTTP_401_UNAUTHORIZED
+            if not employee_data:
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message="user not found")
+                _data = None
+                _error = BaseError(error_message="user not found")
+                _status_code = status.HTTP_404_NOT_FOUND
             else:
-                employee_data.password = req_body.new_password
-                _successful, _message, _error, _status_code = True, "password updated", None, status.HTTP_200_OK
 
+                if role_id == PortalRole.EXPLORER.value and req_body.old_password != employee_data.password:
+                    _response = BaseResponse
+                    _meta = BaseMeta(_id=_id, successful=False, message="invalid credentials")
+                    _data = None
+                    _error = BaseError(error_message="invalid credentials")
+                    _status_code = status.HTTP_403_FORBIDDEN
+                else:
+                    employee_data.password = req_body.new_password
+                    _response = BaseResponse
+                    _meta = BaseMeta(_id=_id, successful=True, message="updated")
+                    _data = None
+                    _error = None
+                    _status_code = status.HTTP_200_OK
 
-            session.commit()
+                    session.commit()
 
-
-    
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=None,
-        error=_error
-    )
-
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
+    
 @api.delete("/employee/{employee_id}")
 def delete_employee(
     *,
     employee_id:str=Path(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
 ):
+     # create request id
     _id = str(uuid.uuid4())
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
-    
-    with database_client.Session() as session:
+    if  role_id not in (PortalRole.SUPER_ADMIN.value, PortalRole.ADMIN.value) :
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _data = None
+        _error = BaseError(error_message="unauthorized")
+        _status_code = status.HTTP_403_FORBIDDEN
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
-            employee_data = session.query(
+    else:
+        # create session with db
+        with database_client.Session() as session:
+
+            query = session.query(
                 Employee
-            ).filter(
-                Employee.public_id == employee_id
             )
+            
+            if role_id == PortalRole.SUPER_ADMIN.value:
+                query = query.filter(
+                    Employee.public_id == employee_id
+                )
 
-        elif role_id == PortalRole.ADMIN.value:
-            employee_data = session.query(
-                Employee
-            ).join(
-                Company,
-                Employee.company_id == Company.company_id
-            ).filter(
-                Employee.public_id == employee_id,
-                Company.public_id == decoded_token.get("cid")
-            )
-        elif role_id == PortalRole.EXPLORER.value:
-            _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=_successful,
-                    message=_message
-                ),
-                data=None,
-                error=_error
-            )
-
-            return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+            elif role_id == PortalRole.ADMIN.value:
+                query = query.join(
+                    Company,
+                    Employee.company_id == Company.company_id
+                ).filter(
+                    Employee.public_id == employee_id,
+                    Company.public_id == decoded_token.get("cid")
+                )
 
 
+            employee_data = query.first()
 
-        employee_data = employee_data.first()
-        if not employee_data:
-            _successful, _message, _error, _status_code = False, "user not found", BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-        else:
-            session.delete(employee_data)
-            session.commit()
-            _successful, _message, _error, _status_code = True, "deleted", None, status.HTTP_200_OK
+            if not employee_data:
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message="user not found")
+                _data = None
+                _error = BaseError(error_message="user not found")
+                _status_code = status.HTTP_404_NOT_FOUND
+            else:
+                session.delete(employee_data)
+                session.commit()
+                
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message="deleted")
+                _data = None
+                _error = None
+                _status_code = status.HTTP_200_OK
 
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=None,
-        error=_error
-    )
-
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
+    
 
 ###############
 ## Dashboard ##
@@ -726,118 +642,91 @@ def get_nface_logs(
     service_filter:str=Query(...), # face_comparison , all , passive_liveness
     start_datetime:datetime.datetime = Query(...),
     end_datetime:datetime.datetime = Query(...),
-    page_no:int= Query(1),
-    items_per_page:int= Query(15),
+    page_no:int = Query(1),
+    items_per_page:int = Query(15),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = str(uuid.uuid4())
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
-        
-        log_data = session.query(
-            NFaceLogs,
-        )
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
+    if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _data = None
+        _error = BaseError(error_message="unauthorized")
+        _status_code = status.HTTP_403_FORBIDDEN
+
+    else:
+
+        with database_client.Session() as session:
+            
+            query = session.query(
+                NFaceLogs,
+            )
+
             if company_id != "all":
-                log_data = log_data.join(
+
+                query = query.join(
                     Company,
                     Company.company_id == NFaceLogs.company_id
                 ).filter(
                     Company.public_id == company_id
                 )
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
-            if company_id != decoded_token.get("cid") or company_id=="all":
-                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=_successful,
-                        message=_message
-                    ),
-                    data=None,
-                    error=_error
-                )
+            
 
-                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
-            else:
-                log_data = log_data.join(
-                    Company,
-                    Company.company_id == NFaceLogs.company_id
-                ).filter(
-                    Company.public_id == company_id
-                )
-        
-
-        if status_filter != "all":
-            log_data = log_data.join(
-                StatusMaster,
-                StatusMaster.status_id == NFaceLogs.status_id
-            ).filter(StatusMaster.status == status_filter.upper().strip())
+            if status_filter != "all":
+                query = query.join(
+                    StatusMaster,
+                    StatusMaster.status_id == NFaceLogs.status_id
+                ).filter(StatusMaster.status == status_filter.upper().strip())
 
 
-        if service_filter != "all":
-            log_data = log_data.join(
-                ServiceMaster,
-                ServiceMaster.service_id == NFaceLogs.service_id
-            ).filter(ServiceMaster.service_name == service_filter.upper().strip())
+            if service_filter != "all":
+                query = query.join(
+                    ServiceMaster,
+                    ServiceMaster.service_id == NFaceLogs.service_id
+                ).filter(ServiceMaster.service_name == service_filter.upper().strip())
 
 
-        log_data = log_data.filter(NFaceLogs.create_date >= start_datetime,
-                                NFaceLogs.create_date <= end_datetime)
-        
-        
-        # total_count = log_data.with_entities(func.count()).scalar()
-        total_count = session.query(func.count()).select_from(NFaceLogs).scalar()
+            query = query.filter(NFaceLogs.create_date >= start_datetime,
+                                    NFaceLogs.create_date <= end_datetime)
+            
+            
+            # total_count = log_data.with_entities(func.count()).scalar()
+            total_count = session.query(func.count()).select_from(NFaceLogs).scalar()
 
 
-        # Pagination
-        if not x_ignore_pagination:
-            offset = (page_no - 1) * items_per_page
-            log_data = log_data.order_by(NFaceLogs.create_date).offset(offset).limit(items_per_page)
+            # Pagination
+            if not x_ignore_pagination:
+                offset = (page_no - 1) * items_per_page
+                query = query.order_by(NFaceLogs.create_date).offset(offset).limit(items_per_page)
 
-        if log_data:
-            log_data = log_data.all()
-            log_data = [ data.to_dict() for data in log_data ]
+            log_data = query.all()
+            log_data = [ NFaceLogs_MF.model_validate(_).model_dump() for _ in log_data ]
 
-    exclude_data_keys = ("company_id","service_id","status_id","service.service_id","status.status_id","_id","company.company_id","company.billing_id","company.billing_information")
-    for i in range(len(log_data)):
-        remove_keys_from_dict(log_data[i],exclude_data_keys)
+            _response = PaginationResponse
+            _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
+            _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
+            _data = log_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
     if x_response_type == "json":
-        _content = PaginationResponse(
-            meta=PaginationMeta(
-                _id=_id,
-                successful=True,
-                message=None,
-                pagination_data=PaginationData(
-                    items_per_page=items_per_page,
-                    page_no=page_no,
-                    total_count=total_count,
-                    page_url=request.url._url
-                )
-            ),
-            data=log_data,
-            error=None
-        )
 
-        return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
-
+        _content = _response(meta=_meta, data=_data, error=_error)
+        return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+        
     elif x_response_type == "csv":
         
-        json_data = [
-            {"name": "John", "age": 30, "city": "New York"},
-            {"name": "Jane", "age": 25, "city": "San Francisco"},
-            {"name": "Bob", "age": 35, "city": "Chicago"}
-        ]
 
         csv_data = io.StringIO()
-        csv_writer = csv.DictWriter(csv_data, fieldnames=json_data[0].keys())
+        csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
         csv_writer.writeheader()
-        csv_writer.writerows(json_data)
+        csv_writer.writerows(log_data)
 
         # Create a streaming response
         response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
@@ -852,78 +741,75 @@ def get_nface_stats(
     start_datetime:datetime.datetime = Query(...),
     end_datetime:datetime.datetime = Query(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
-    request:Request
 ):
+    # create request id
     _id = str(uuid.uuid4())
+    # get role id of logged in user
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
-        
-        query = session.query(
-            ServiceMaster.service_name,
-            StatusMaster.status,
-            func.count().label('count')
-        ).join(
-           NFaceLogs,
-           StatusMaster.status_id==NFaceLogs.status_id
-        ).join(
-           ServiceMaster,
-           ServiceMaster.service_id==NFaceLogs.service_id
-        )
+    if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _data = None
+        _error = BaseError(error_message="unauthorized")
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
+
+        with database_client.Session() as session:
+            
+            query = session.query(
+                ServiceMaster.service_name,
+                StatusMaster.status,
+                func.count().label('count')
+            ).join(
+                NFaceLogs,
+                StatusMaster.status_id==NFaceLogs.status_id
+            ).join(
+                ServiceMaster,
+                ServiceMaster.service_id==NFaceLogs.service_id
+            )
 
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
             if company_id != "all":
-                query = query.join(Company, Company.company_id == NFaceLogs.company_id).filter(Company.public_id == company_id)
-
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
-            if company_id != decoded_token.get("cid") or company_id == "all":
-                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=_successful,
-                        message=_message
-                    ),
-                    data=None,
-                    error=_error
+                query = query.join(
+                    Company,
+                    Company.company_id == NFaceLogs.company_id
+                ).filter(
+                    Company.public_id == company_id
                 )
-                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
-            query = query.join(Company, Company.company_id == NFaceLogs.company_id).filter(Company.public_id == company_id)
-
-    
-        query = query.filter(NFaceLogs.create_date >= start_datetime,
-                                NFaceLogs.create_date <= end_datetime)
-
-        # Add grouping and ordering
-        query = query.group_by(ServiceMaster.service_name, StatusMaster.status,)
 
 
-        stat_dict = lambda x : {"FAILURE":x.get("FAILURE",0),"SUCCESS":x.get("SUCCESS",0),"ISSUE":x.get("ISSUE",0)}
-        if query:
-            query = query.all()
-            nested_dict = {}
-            for outer_key, inner_key, value in query:
-                if outer_key not in nested_dict:
-                    nested_dict[outer_key] = {}
-                nested_dict[outer_key][inner_key] = value
+            query = query.filter(
+                NFaceLogs.create_date >= start_datetime,
+                NFaceLogs.create_date <= end_datetime
+            )
 
-        for k,v in nested_dict.items():
-            nested_dict[k] = stat_dict(v)
+            # Add grouping and ordering
+            query = query.group_by(ServiceMaster.service_name, StatusMaster.status,)
 
-        _successful, _message, _error, _status_code = True, None, None, status.HTTP_200_OK
-        _content = BaseResponse(
-            meta=BaseMeta(
-                _id=_id,
-                successful=_successful,
-                message=_message
-            ),
-            data=nested_dict,
-            error=_error
-        )
-        return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
+            stat_dict = lambda x : {"FAILURE":x.get("FAILURE",0),"SUCCESS":x.get("SUCCESS",0),"ISSUE":x.get("ISSUE",0)}
+            if query:
+                query = query.all()
+                nested_dict = {}
+                for outer_key, inner_key, value in query:
+                    if outer_key not in nested_dict:
+                        nested_dict[outer_key] = {}
+                    nested_dict[outer_key][inner_key] = value
+
+            for k,v in nested_dict.items():
+                nested_dict[k] = stat_dict(v)
+
+
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = nested_dict
+            _error = None
+            _status_code = status.HTTP_200_OK
+
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+        
 # Invoice
 @api.get("/invoice")
 def get_invoice(
@@ -1079,8 +965,8 @@ def get_invoice_stats(
         error=None
     )
     return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
-            
-    
+
+
 ####################
 ## Control Center ##
 ####################
@@ -1587,7 +1473,6 @@ def update_company_billing(
         exclude_data_keys = ("company_id", "billing_id","billing_information.billing_frequency_id","billing_information.billing_id","billing_information.currency_id","billing_information.currency.currency_id","billing_information.billing_frequency.billing_frequency_id","banking_info.company_id","banking_info.bank_type_id","banking_info.bank_type.bank_type_id")
         remove_keys_from_dict(_data,exclude_data_keys)
 
-
     _content = BaseResponse(
         meta=BaseMeta(
             _id=_id,
@@ -1602,7 +1487,7 @@ def update_company_billing(
 
 
 @api.put("/company/{company_id}/banking")
-def update_company_billing(
+def update_company_banking(
     *,
     company_id:str=Path(...),
     req_body:UpdateCompanyBankingRequest=Body(...),

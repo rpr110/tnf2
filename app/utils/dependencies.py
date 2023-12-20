@@ -4,11 +4,11 @@
 
 import datetime
 from jose import jwt
-from fastapi import Header, Depends
+from fastapi import Header, status
 from fastapi.exceptions import HTTPException
 
 from app.utils.models import Employee, Roles
-from app import database_client
+from app.utils.schema import BaseResponse, BaseMeta, BaseError
 
 
 
@@ -39,14 +39,17 @@ async def decodeJwtTokenDependancy(token:str=Header(...,alias="x-access-token"))
         decoded_token = decodeJwtToken(token)
         return decoded_token
     except Exception as e:
-        _content = {"meta":{"successful":False,"message":"invalid jwt"},"data":None,"error":{"error_message":"invalid jwt"}}
-        raise HTTPException(status_code=401,detail=_content)
+        _content = BaseResponse(
+            meta=BaseMeta(
+                _id="",
+                successful=False,
+                message="invalid jwt"
 
-# async def getRoles():
-#     with database_client.Session() as session:
-#         roles = session.query(
-#             Roles
-#         )
-#     return roles
+            ),
+            data=None,
+            error=BaseError(
+                error_message="invalid jwt"
+            )
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail=_content.model_dump())
 
-    
