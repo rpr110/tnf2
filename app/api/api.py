@@ -79,14 +79,16 @@ def login(req_body:LoginRequest=Body(...)):
 
             _response = TokenResponse
             _meta = TokenMeta(_id=_id, successful=True, message="logged in", token=jwt_token)
-            _data = employee_data
+            # _data = employee_data
+            _data = None
             _error = None
             _status_code = status.HTTP_200_OK
 
 
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-    
+
+
 @api.post("/forgot_password")
 def forgot_password(req_body:ForgotPasswordRequest=Body(...)):
     

@@ -264,7 +264,7 @@ class Employee_MF(FormatterModel):
 
     employee_name:Optional[str]
     email_id:str
-    password:str
+    #password:str
     phone_number:Optional[str]
     employee_profile_pic:Optional[bytes]
     is_active:bool
