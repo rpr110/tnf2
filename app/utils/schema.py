@@ -117,7 +117,7 @@ class UpdateCompanyRequest(BaseModel):
     is_active:bool
 
 class UpdateCompanyBillingRequest(BaseModel):
-    email_id:str
+    email_id1:str
     fc_cpr:Optional[float]
     pl_cpr:Optional[float]
     floor_cost:Optional[float]

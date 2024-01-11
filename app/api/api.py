@@ -1442,7 +1442,7 @@ def update_company_billing(
 
             billing_frequency_data = session.query(BillingFrequencyMaster).filter(BillingFrequencyMaster.public_id == req_body.billing_frequency_id).first()
 
-            billing_data.email_id=req_body.email_id
+            billing_data.email_id1=req_body.email_id1
             billing_data.fc_cpr=req_body.fc_cpr
             billing_data.pl_cpr=req_body.pl_cpr
             billing_data.floor_cost=req_body.floor_cost
