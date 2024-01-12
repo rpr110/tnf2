@@ -8,6 +8,7 @@ import csv
 import datetime
 
 
+import sqlalchemy
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload, joinedload, aliased
 
@@ -405,16 +406,24 @@ def create_employee(
                 role_id=role_data.role_id
             )
 
-            # add employee to db
-            session.add(employee_data)
-            session.commit()
-            session.refresh(employee_data)
+            try:
+                # add employee to db
+                session.add(employee_data)
+                session.commit()
+                session.refresh(employee_data)
+                
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message="created")
+                _data = Employee_MF.model_validate(employee_data).model_dump()
+                _error = None
+                _status_code = status.HTTP_200_OK
+            except sqlalchemy.exc.IntegrityError as e:
 
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=True, message="created")
-            _data = Employee_MF.model_validate(employee_data).model_dump()
-            _error = None
-            _status_code = status.HTTP_200_OK
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message="user exists")
+                _data = None
+                _error = BaseError(error_message="user exists")
+                _status_code = status.HTTP_400_BAD_REQUEST
 
 
     _content = _response(meta=_meta, data=_data, error=_error)
