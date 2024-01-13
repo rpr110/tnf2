@@ -1611,12 +1611,20 @@ def delete_company(
 
             return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
-
-
         company_data = company_data.first()
+
         if not company_data:
             _successful, _message, _error, _status_code = False, "user not found", BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
         else:
+
+            company_banking_data = session.query(
+                CompanyBankingInfo
+            ).filter(
+                CompanyBankingInfo.company_id == company_data.company_id
+            ).first()
+
+            if company_banking_data:
+                session.delete(company_banking_data)
             session.delete(company_data)
             session.commit()
             _successful, _message, _error, _status_code = True, "deleted", None, status.HTTP_200_OK
