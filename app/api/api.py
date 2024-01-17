@@ -676,7 +676,7 @@ def get_nface_logs(
         with database_client.Session() as session:
             
             query = session.query(
-                NFaceLogs,
+                NFaceLogs
             )
 
             if company_id != "all":
@@ -825,8 +825,11 @@ def get_nface_stats(
 @api.get("/invoice")
 def get_invoice(
     *,
+    x_ignore_pagination:bool=Header(False, alias="x-ignore-pagination"),
+    x_response_type:str=Header("json",alias="x-response-type"), # json/ csv/ excel
 
     company_id:str=Query("all"),
+    bank_type_filter:str=Query("all"), # all dbm non dmb
     status_filter:str=Query("all"), # pending, all, paid
     start_datetime:datetime.datetime = Query(...),
     end_datetime:datetime.datetime = Query(...),
@@ -852,6 +855,8 @@ def get_invoice(
             BankTypeMaster.bank_type_id == CompanyBankingInfo.bank_type_id
         )
 
+        if bank_type_filter != "all":
+            query = query.filter(BankTypeMaster.bank_type == bank_type_filter.upper().strip())
 
         if role_id == PortalRole.SUPER_ADMIN.value:
             if company_id != "all":
@@ -877,14 +882,14 @@ def get_invoice(
         if status_filter != "all":
             sf = 1 if status_filter.upper().strip() == "PAID" else 0
             query = query.filter(Invoice.payment_status == sf)
-
-
+        
+ 
         query = query.filter(Invoice.create_date >= start_datetime,
                                 Invoice.create_date <= end_datetime)
 
-
-        offset = (page_no - 1) * items_per_page
-        query = query.order_by(Invoice.create_date).offset(offset).limit(items_per_page)
+        if not x_ignore_pagination:
+            offset = (page_no - 1) * items_per_page
+            query = query.order_by(Invoice.create_date).offset(offset).limit(items_per_page)
 
         query = query.all()
         if query:
@@ -895,17 +900,33 @@ def get_invoice(
         remove_keys_from_dict(query[i],exclude_data_keys)
 
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=True,
-            message=None
-        ),
-        data=query,
-        error=None
-    )
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
+    if x_response_type == "json":
+
+        _content = BaseResponse(
+            meta=BaseMeta(
+                _id=_id,
+                successful=True,
+                message=None
+            ),
+            data=query,
+            error=None
+        )
+        return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+        
+    # elif x_response_type == "csv":
+        
+
+    #     csv_data = io.StringIO()
+    #     csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
+    #     csv_writer.writeheader()
+    #     csv_writer.writerows(log_data)
+
+    #     # Create a streaming response
+    #     response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
+    #     response.headers["Content-Disposition"] = "attachment;filename=output.csv"
+    #     return response
+    
 # Invoice
 @api.get("/invoice/stats")
 def get_invoice_stats(
@@ -1716,7 +1737,7 @@ def update_company_banking(
 
 
         _data = company_data
-        
+
     _content = BaseResponse(
         meta=BaseMeta(
             _id=_id,

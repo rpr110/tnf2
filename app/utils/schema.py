@@ -361,7 +361,7 @@ class NFaceLogs_MF(FormatterModel):
     output:Optional[str]
     execution_time:Optional[float]
     create_date:datetime.datetime
-    user_image:Optional[bytes]
+    user_image:Optional[str]
 
     company:Optional[Company_MF]
     status:Optional[StatusMaster_MF]
