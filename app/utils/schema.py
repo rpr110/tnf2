@@ -3,7 +3,7 @@
 #############
 
 import datetime
-from typing import Optional, Union
+from typing import Optional, Union, List, Any
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -88,17 +88,22 @@ class CreateEmployeeRequest(BaseModel):
 class RegisterClientRequest(BaseModel):
     # Billing Info
     email_id:str
-    fc_cpr:Optional[float]
-    pl_cpr:Optional[float]
+    # fc_cpr:Optional[float]
+    # pl_cpr:Optional[float]
     floor_cost:Optional[float]
+    vat:Optional[float]
+
     # currency_id:Optional[float]
     billing_start_date:Optional[datetime.datetime]
     billing_end_date:Optional[datetime.datetime]
     billing_frequency_id:Optional[str]
+    billing_mode_type_id:Optional[str]
+    institution_id:Optional[str]
     # is_public:Optional[bool]
 
     # Company Info
     company_name:str
+    client_id:Optional[str]
 
     # Company Banking Info
     bank_type_id:Optional[str]
@@ -106,7 +111,6 @@ class RegisterClientRequest(BaseModel):
     product_code:Optional[str]
     sort_code:Optional[str]
     payee_beneficiary:Optional[str]
-    gateway_client_id:Optional[str]
     institution_code:Optional[str]
     billing_account_number:Optional[str]
     billing_bank_code:Optional[str]
@@ -114,17 +118,21 @@ class RegisterClientRequest(BaseModel):
 
 class UpdateCompanyRequest(BaseModel):
     company_name:str
+    client_id:str
     is_active:bool
 
 class UpdateCompanyBillingRequest(BaseModel):
     email_id1:str
-    fc_cpr:Optional[float]
-    pl_cpr:Optional[float]
+    # fc_cpr:Optional[float]
+    # pl_cpr:Optional[float]
     floor_cost:Optional[float]
+    vat:Optional[float]
     # currency_id:Optional[float]
     billing_start_date:Optional[datetime.datetime]
     billing_end_date:Optional[datetime.datetime]
     billing_frequency_id:Optional[str]
+    billing_mode_type_id:Optional[str]
+    institution_id:Optional[str]
     # is_public:Optional[bool]
 
 class UpdateCompanyBankingRequest(BaseModel):
@@ -134,12 +142,29 @@ class UpdateCompanyBankingRequest(BaseModel):
     product_code:Optional[str]
     sort_code:Optional[str]
     payee_beneficiary:Optional[str]
-    gateway_client_id:Optional[str]
+    # gateway_client_id:Optional[str]
     institution_code:Optional[str]
     billing_account_number:Optional[str]
     billing_bank_code:Optional[str]
     billing_account_name:Optional[str]
 
+class CreateInstitutionRequest(BaseModel):
+    institution_name:str
+    floor_cost:Optional[float]
+    vat:Optional[float]
+    # currency_id:Optional[float]
+    billing_start_date:Optional[datetime.datetime]
+    billing_end_date:Optional[datetime.datetime]
+    billing_frequency_id:Optional[str]
+    billing_mode_type_id:Optional[str]
+
+class UpdateInstitutionRequest(CreateInstitutionRequest):
+    ...
+class AddVolumeTariffRequest(BaseModel):
+    item_id:str
+    min_vol:int
+    max_vol:int
+    rate:float
 
 
 #################################
@@ -148,6 +173,7 @@ class UpdateCompanyBankingRequest(BaseModel):
 
 class FormatterModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class CurrencyMaster_MF(FormatterModel):
@@ -193,6 +219,15 @@ class BillingFrequencyMaster_MF(FormatterModel):
     create_date:datetime.datetime
     update_date:datetime.datetime
 
+class BillingModeTypeMaster_MF(FormatterModel):
+    
+    # public_id:str
+    billing_mode_type_id:Union[str,Any] = Field(..., alias='public_id')
+    billing_mode_type:str
+    billing_mode_type_description:Optional[None]
+    create_date:datetime.datetime
+    update_date:Optional[datetime.datetime]
+
 class Roles_MF(FormatterModel):
     # public_id:str
     role_id:str = Field(..., alias='public_id')
@@ -208,23 +243,61 @@ class VerificationCode_MF(FormatterModel):
     _code:str
     create_date:datetime.datetime
 
+
+class Wallet_MF(FormatterModel):
+    wallet_id:Union[str,Any] = Field(..., alias='public_id')
+    amount:float
+    ledger_amount:float
+    create_date:datetime.datetime
+    update_date:Optional[datetime.datetime]
+
+class VolumeTariff_MF(FormatterModel):
+    tariff_id:Union[str,Any] = Field(..., alias='public_id')
+    min_volume:int
+    max_volume:int
+    rate:float
+    create_date:datetime.datetime
+    update_date:Optional[datetime.datetime]
+
+
+class Institution_MF(FormatterModel):
+    institution_id:Union[str,Any] = Field(..., alias='public_id')
+    institution_name:str
+    floor_cost: Optional[float]
+    vat:float
+    billing_start_date:datetime.datetime
+    billing_end_date:datetime.datetime
+
+    currency : Optional[CurrencyMaster_MF]
+    billing_mode_type: Optional[BillingModeTypeMaster_MF]
+    billing_frequency : Optional[BillingFrequencyMaster_MF]
+    volume_tariff: Union[List[VolumeTariff_MF], VolumeTariff_MF, None, Any ]
+    create_date:datetime.datetime
+    update_date:Optional[datetime.datetime]
+
+
 class BillingInformation_MF(FormatterModel):
 
     # public_id:str
     billing_id:str = Field(..., alias='public_id')
-    billing_info_name:Optional[str]
+    # billing_info_name:Optional[str]
     email_id1:Optional[str]
-    fc_cpr:float
-    pl_cpr:float
+    # fc_cpr:float
+    # pl_cpr:float
     floor_cost: Optional[float]
     billing_start_date:datetime.datetime
     billing_end_date:datetime.datetime
-    is_public:bool
+    # is_public:bool
     create_date:datetime.datetime
     update_date:datetime.datetime
+    vat:float
 
+    billing_mode_type: Optional[BillingModeTypeMaster_MF]
     currency : Optional[CurrencyMaster_MF]
     billing_frequency : Optional[BillingFrequencyMaster_MF]
+    institution: Optional[Institution_MF]
+    volume_tariff: Union[List[VolumeTariff_MF], VolumeTariff_MF, None, Any]
+
 
 
 class CompanyBankingInfo_MF(FormatterModel):
@@ -235,7 +308,7 @@ class CompanyBankingInfo_MF(FormatterModel):
     payee_beneficiary:Optional[str]
     create_date:datetime.datetime
     update_date:datetime.datetime
-    gateway_client_id:Optional[str]
+    # gateway_client_id:Optional[str]
     institution_code:Optional[str]
     billing_account_number:Optional[str]
     billing_bank_code:Optional[str]
@@ -247,7 +320,7 @@ class CompanyBankingInfo_MF(FormatterModel):
 class Company_MF(FormatterModel):
     
     # public_id:str
-    company_id:str = Field(..., alias='public_id')
+    company_id:Union[str, Any] = Field(..., alias='public_id')
     client_id: str
     company_name: str
     is_active:bool
@@ -256,6 +329,7 @@ class Company_MF(FormatterModel):
 
     billing_information:Optional[BillingInformation_MF]
     banking_information:Optional[CompanyBankingInfo_MF]
+    wallet:Optional[Wallet_MF]
 
 
 class Employee_MF(FormatterModel):
@@ -309,3 +383,4 @@ class Invoice_MF(FormatterModel):
     update_date:datetime.datetime
 
     company:Optional[Company_MF]
+

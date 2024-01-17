@@ -26,24 +26,42 @@ class ServiceMaster(Base,SerializerMixin):
     __table__ = metadata.tables['Service_Master']
 class BankTypeMaster(Base,SerializerMixin):
     __table__ = metadata.tables['Bank_Type_Master']
-
+class BillingModeTypeMaster(Base,SerializerMixin):
+    __table__ = metadata.tables['Billing_Mode_Type_Master']
+class BillingFrequencyMaster(Base,SerializerMixin):
+    __table__ = metadata.tables['Billing_Frequency_Master']
 class VerificationCode(Base,SerializerMixin):
     __table__ = metadata.tables['Verification_Code']
 
+class Wallet(Base,SerializerMixin):
+    __table__ = metadata.tables["Wallet"]
 
-class BillingFrequencyMaster(Base,SerializerMixin):
-    __table__ = metadata.tables['Billing_Frequency_Master']
 
+class VolumeTariff(Base,SerializerMixin):
+    __table__ = metadata.tables["Volume_Tariff"]
+
+
+class Institution(Base,SerializerMixin):
+    __table__ = metadata.tables['Institution']
+    currency = relationship("CurrencyMaster")
+    billing_frequency = relationship("BillingFrequencyMaster")
+    billing_mode_type = relationship("BillingModeTypeMaster")
+    volume_tariff = relationship("VolumeTariff")
 
 class BillingInformation(Base,SerializerMixin):
     __table__ = metadata.tables['Billing_Information']
     currency = relationship("CurrencyMaster")
     billing_frequency = relationship("BillingFrequencyMaster")
+    billing_mode_type = relationship("BillingModeTypeMaster")
+    institution = relationship("Institution")
+    volume_tariff = relationship("VolumeTariff")
+    #company
 
 class Company(Base,SerializerMixin):
     __table__ = metadata.tables['Company']
-    billing_information = relationship("BillingInformation")
+    billing_information = relationship("BillingInformation", uselist=False)
     banking_information = relationship("CompanyBankingInfo", uselist=False)
+    wallet = relationship("Wallet",uselist=False)
 
 class Roles(Base,SerializerMixin):
     __table__ = metadata.tables['Roles']
@@ -74,3 +92,4 @@ class CompanyBankingInfo(Base,SerializerMixin):
     # company = relationship("Company")
     bank_type = relationship("BankTypeMaster")
     __mapper_args__ = { 'primary_key': [metadata.tables["Company_Banking_Info"].c.company_id] }
+
