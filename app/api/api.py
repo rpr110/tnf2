@@ -1252,16 +1252,16 @@ def get_all_companies(
             dictify = lambda data,is_verbose : [Company_MF.model_validate(i).model_dump() for i in data] if is_verbose else [i._asdict() for i in data]
             company_data = dictify(company_data, x_verbose)
 
-            if x_verbose:
+            # if x_verbose:
                 # exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
                 # for i in range(len(company_data)):
                 #     remove_keys_from_dict(company_data[i],exclude_data_keys)
-                for idx, _ in enumerate(company_data):
+                # for idx, _ in enumerate(company_data):
 
-                    if company_data[idx].get("billing_information",{}).get("volume_tariff"):
-                        company_data[idx]["billing_information"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["volume_tariff"] ] 
-                    if company_data[idx].get("billing_information",{}).get("institution",{}) and company_data[idx].get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-                        company_data[idx]["billing_information"]["institution"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["institution"]["volume_tariff"] ] 
+                #     if company_data[idx].get("billing_information",{}).get("volume_tariff"):
+                #         company_data[idx]["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["volume_tariff"] ] 
+                #     if company_data[idx].get("billing_information",{}).get("institution",{}) and company_data[idx].get("billing_information",{}).get("institution",{}).get("volume_tariff") :
+                #         company_data[idx]["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["institution"]["volume_tariff"] ] 
     
     _content = PaginationResponse(
         meta=PaginationMeta(
@@ -1324,16 +1324,16 @@ def get_company(
             dictify = lambda data,is_verbose : [Company_MF.model_validate(i).model_dump() for i in data] if is_verbose else [i._asdict() for i in data]
             company_data = dictify(company_data, x_verbose)
 
-            if x_verbose:
-                # exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
-                # for i in range(len(company_data)):
-                #     remove_keys_from_dict(company_data[i],exclude_data_keys)
-                for idx, _ in enumerate(company_data):
+            # if x_verbose:
+            #     # exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
+            #     # for i in range(len(company_data)):
+            #     #     remove_keys_from_dict(company_data[i],exclude_data_keys)
+            #     for idx, _ in enumerate(company_data):
 
-                    if company_data[idx].get("billing_information",{}).get("volume_tariff"):
-                        company_data[idx]["billing_information"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["volume_tariff"] ] 
-                    if company_data[idx].get("billing_information",{}).get("institution",{}) and company_data[idx].get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-                        company_data[idx]["billing_information"]["institution"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["institution"]["volume_tariff"] ] 
+            #         if company_data[idx].get("billing_information",{}).get("volume_tariff"):
+            #             company_data[idx]["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["volume_tariff"] ] 
+            #         if company_data[idx].get("billing_information",{}).get("institution",{}) and company_data[idx].get("billing_information",{}).get("institution",{}).get("volume_tariff") :
+            #             company_data[idx]["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["institution"]["volume_tariff"] ] 
     
             _successful, _message, _data, _error, _status_code = True, None, company_data, None, status.HTTP_200_OK
         else:
@@ -1459,6 +1459,17 @@ def onboard_client(
             
             session.flush()
 
+            if req_body.volume_tariff:
+                for vt in req_body.volume_tariff:
+                    volume_tariff_data = VolumeTariff(
+                        institution_id=None,
+                        billing_id=billing_data.billing_id,
+                        min_volume=vt.get("min_vol"),
+                        max_volume=vt.get("max_vol"),
+                        rate=vt.get("rate")
+                    )
+                    session.add(volume_tariff_data)
+
             _successful, _message, _error, _status_code = True, "created client", None, status.HTTP_200_OK
 
             
@@ -1481,10 +1492,10 @@ def onboard_client(
         if company_data:
             company_data = Company_MF.model_validate(company_data).model_dump()  
                     
-            if company_data.get("billing_information",{}).get("volume_tariff"):
-                company_data["billing_information"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
-            if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-                company_data["billing_information"]["institution"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
+            # if company_data.get("billing_information",{}).get("volume_tariff"):
+            #     company_data["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
+            # if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
+            #     company_data["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
 
 
         _data = company_data # company_data.to_dict()
@@ -1563,10 +1574,10 @@ def update_company(
         if company_data:
             company_data = Company_MF.model_validate(company_data).model_dump()  
                     
-            if company_data.get("billing_information",{}).get("volume_tariff"):
-                company_data["billing_information"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
-            if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-                company_data["billing_information"]["institution"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
+            # if company_data.get("billing_information",{}).get("volume_tariff"):
+            #     company_data["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
+            # if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
+            #     company_data["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
 
         _data = company_data
 
@@ -1624,6 +1635,26 @@ def update_company_billing(
             billing_data.billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
             billing_data.institution_id=institution_data.institution_id if institution_data else None
 
+            volume_tariff_data = session.query(
+                VolumeTariff
+            ).filter(
+                VolumeTariff.billing_id == billing_data.billing_id
+            ).all()
+
+            if volume_tariff_data:
+                for vt in volume_tariff_data:
+                    session.delete(vt)
+            
+            if req_body.volume_tariff:
+                for vt in req_body.volume_tariff:
+                    volume_tariff_data = VolumeTariff(
+                        institution_id=None,
+                        billing_id=billing_data.billing_id,
+                        min_volume=vt.get("min_vol"),
+                        max_volume=vt.get("max_vol"),
+                        rate=vt.get("rate")
+                    )
+                    session.add(volume_tariff_data)
 
             _successful, _message, _data, _error, _status_code = True, "updated", company_data, None, status.HTTP_200_OK
 
@@ -1640,17 +1671,15 @@ def update_company_billing(
                 )
             )
             return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-    
+
+        session.flush()
         session.commit()
+
+        # company_data = session.query(Company).filter(Company.public_id == company_id).first()
 
         if company_data:
             company_data = Company_MF.model_validate(company_data).model_dump()  
                     
-            if company_data.get("billing_information",{}).get("volume_tariff"):
-                company_data["billing_information"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
-            if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-                company_data["billing_information"]["institution"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
-
 
         _data = company_data
 
@@ -1730,10 +1759,10 @@ def update_company_banking(
         if company_data:
             company_data = Company_MF.model_validate(company_data).model_dump()  
                     
-            if company_data.get("billing_information",{}).get("volume_tariff"):
-                company_data["billing_information"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
-            if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-                company_data["billing_information"]["institution"]["volume_tariff"] = [ Institution_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
+            # if company_data.get("billing_information",{}).get("volume_tariff"):
+            #     company_data["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
+            # if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
+            #     company_data["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
 
 
         _data = company_data
@@ -1993,9 +2022,9 @@ def institutions(
                 # format data
                 institution_data = [  Institution_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in institution_data  ]
                 
-                if x_verbose:
-                    for idx, _ in enumerate(institution_data):
-                        institution_data[idx]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data[idx]["volume_tariff"]] if institution_data[idx]["volume_tariff"] else None
+                # if x_verbose:
+                #     for idx, _ in enumerate(institution_data):
+                #         institution_data[idx]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data[idx]["volume_tariff"]] if institution_data[idx]["volume_tariff"] else None
 
 
                 # institution_data = [  i.to_dict() if x_verbose else i._asdict() for i in institution_data  ]
@@ -2049,7 +2078,7 @@ def institution(
             
             if institution_data:
                 institution_data = Institution_MF.model_validate(institution_data).model_dump()
-                institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
+                # institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
                 # institution_data = institution_data.to_dict()
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=True, message=None)
@@ -2129,11 +2158,25 @@ def create_institution(
             try:
                 # add employee to db
                 session.add(institution_data)
+                #session.refresh(institution_data)
+                session.flush()
+
+                if req_body.volume_tariff:
+                    for vt in req_body.volume_tariff:
+                        volume_tariff_data = VolumeTariff(
+                            institution_id=institution_data.institution_id,
+                            billing_id=None,
+                            min_volume=vt.get("min_vol"),
+                            max_volume=vt.get("max_vol"),
+                            rate=vt.get("rate")
+                        )
+                        session.add(volume_tariff_data)
+
                 session.commit()
                 session.refresh(institution_data)
 
                 institution_data = Institution_MF.model_validate(institution_data).model_dump()
-                institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
+                # institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
                 
                 
                 _response = BaseResponse
@@ -2192,10 +2235,33 @@ def update_institution(
                 institution_data.billing_frequency_id=billing_frequency_data.billing_frequency_id
                 institution_data.billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
                 # commit the changes to the database
+
+                volume_tariff_data = session.query(
+                    VolumeTariff
+                ).filter(
+                    VolumeTariff.institution_id == institution_data.institution_id
+                ).all()
+
+                if volume_tariff_data:
+                    for vt in volume_tariff_data:
+                        session.delete(vt)
+                
+                if req_body.volume_tariff:
+                    for vt in req_body.volume_tariff:
+                        volume_tariff_data = VolumeTariff(
+                            institution_id=institution_data.institution_id,
+                            billing_id=None,
+                            min_volume=vt.get("min_vol"),
+                            max_volume=vt.get("max_vol"),
+                            rate=vt.get("rate")
+                        )
+                        session.add(volume_tariff_data)
+
+                session.flush()
                 session.commit()
 
                 institution_data = Institution_MF.model_validate(institution_data).model_dump()
-                institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
+                # institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
                 
 
                 _response = BaseResponse

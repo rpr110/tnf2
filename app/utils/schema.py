@@ -99,6 +99,8 @@ class RegisterClientRequest(BaseModel):
     billing_frequency_id:Optional[str]
     billing_mode_type_id:Optional[str]
     institution_id:Optional[str]
+    volume_tariff:Optional[List]
+
     # is_public:Optional[bool]
 
     # Company Info
@@ -134,6 +136,7 @@ class UpdateCompanyBillingRequest(BaseModel):
     billing_mode_type_id:Optional[str]
     institution_id:Optional[str]
     # is_public:Optional[bool]
+    volume_tariff:Optional[List]
 
 class UpdateCompanyBankingRequest(BaseModel):
     # Company Banking Info
@@ -157,6 +160,7 @@ class CreateInstitutionRequest(BaseModel):
     billing_end_date:Optional[datetime.datetime]
     billing_frequency_id:Optional[str]
     billing_mode_type_id:Optional[str]
+    volume_tariff:Optional[List]
 
 class UpdateInstitutionRequest(CreateInstitutionRequest):
     ...
@@ -271,7 +275,7 @@ class Institution_MF(FormatterModel):
     currency : Optional[CurrencyMaster_MF]
     billing_mode_type: Optional[BillingModeTypeMaster_MF]
     billing_frequency : Optional[BillingFrequencyMaster_MF]
-    volume_tariff: Union[List[VolumeTariff_MF], VolumeTariff_MF, None, Any ]
+    volume_tariff: Union[List[VolumeTariff_MF],  None ]
     create_date:datetime.datetime
     update_date:Optional[datetime.datetime]
 
@@ -296,7 +300,7 @@ class BillingInformation_MF(FormatterModel):
     currency : Optional[CurrencyMaster_MF]
     billing_frequency : Optional[BillingFrequencyMaster_MF]
     institution: Optional[Institution_MF]
-    volume_tariff: Union[List[VolumeTariff_MF], VolumeTariff_MF, None, Any]
+    volume_tariff: Union[List[VolumeTariff_MF], None]
 
 
 
