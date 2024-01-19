@@ -1301,6 +1301,8 @@ def get_company(
 
         company_data = session.query(
             *data_to_query
+        ).filter(
+            Company.public_id==company_id
         )
         if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
             ...
