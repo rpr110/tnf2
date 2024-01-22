@@ -7,6 +7,7 @@ import uuid
 import csv
 import datetime
 
+import pandas as pd
 
 import sqlalchemy
 from sqlalchemy import func
@@ -884,12 +885,12 @@ def get_invoice(
             query = query.filter(Invoice.payment_status == sf)
         
  
-        query = query.filter(Invoice.create_date >= start_datetime,
-                                Invoice.create_date <= end_datetime)
+        query = query.filter(Invoice.end_date >= start_datetime,
+                                Invoice.end_date <= end_datetime)
 
         if not x_ignore_pagination:
             offset = (page_no - 1) * items_per_page
-            query = query.order_by(Invoice.create_date).offset(offset).limit(items_per_page)
+            query = query.order_by(Invoice.end_date).offset(offset).limit(items_per_page)
 
         query = query.all()
         if query:
@@ -897,7 +898,7 @@ def get_invoice(
 
     exclude_data_keys = ("invoice_id","company_id","company.company_id","company.billing_id","company.billing_information")
     for i in range(len(query)):
-        remove_keys_from_dict(query[i],exclude_data_keys)
+        remove_keys_from_dict(query[i], exclude_data_keys)
 
 
 
@@ -914,19 +915,168 @@ def get_invoice(
         )
         return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
         
-    # elif x_response_type == "csv":
+    elif x_response_type == "csv":
         
+        # Extract all billing dates from the query
+        billing_dates = [row.get("end_date") for row in query if row.get("end_date")]
 
-    #     csv_data = io.StringIO()
-    #     csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
-    #     csv_writer.writeheader()
-    #     csv_writer.writerows(log_data)
+        # Find the maximum billing date
+        max_billing_date = max(billing_dates) if billing_dates else None
 
-    #     # Create a streaming response
-    #     response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
-    #     response.headers["Content-Disposition"] = "attachment;filename=output.csv"
-    #     return response
-    
+        # Define the TXT file name with the formatted date
+        if max_billing_date:
+            formatted_date = datetime.datetime.strptime(max_billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
+            txt_file_name = f"N-Face_Billing_Smartdet_{formatted_date}.txt"
+        else:
+            txt_file_name = "N-Face_Billing_Smartdet.txt"
+
+        max_billing_date = max(billing_dates) if billing_dates else None
+
+        if bank_type_filter.lower().strip() == "all":
+            dmb_columns = ["Routing_Number","product_code","Billing_date","Amount"]
+            non_dmb_columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
+
+            dmb_data = []
+            non_dmb_data = []
+            for idx, row in enumerate(query):
+                #DMB DATA
+                if row.get("bank_type").lower() == "dmb":
+                    routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
+                    product_code = row.get("company",{}).get("banking_information",{}).get("product_code",None)
+                    billing_date = row.get("end_date",None)
+                    amount = float(row.get("amount",0))
+
+                    # Convert the date to the desired format ("yyyymmdd")
+                    formatted_billing_date = datetime.datetime.strptime(billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
+                    dmb_data.append([routing_number,product_code,formatted_billing_date,amount])
+
+                elif row.get("bank_type").lower() == "non-dmb":
+                    #NON DMMB DATA
+                    serial_no = idx + 1
+                    account_number = row.get("company", {}).get("banking_information", {}).get("billing_account_number", None)
+                    sort_code = row.get("company", {}).get("banking_information", {}).get("sort_code", None)
+                    payee_beneficiary = row.get("company", {}).get("banking_information", {}).get("payee_beneficiary", None)
+                    amount = float(row.get("amount", 0))
+                    narration = "N-Face Billing"
+                    payer = "NIBSS PLC"
+                    debit_sort_code = ""
+                    merchant_id = ""
+                    crdr = "DR"
+                    currency = "NGN"
+                    cust_code = ""
+                    beneficiary_bvn = ""
+                    payer_bvn = ""
+                    billing_date = row.get("end_date", None)
+
+                    non_dmb_data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
+                            debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
+
+            dmb_df = pd.DataFrame(dmb_data, columns=dmb_columns)
+            non_dmb_df = pd.DataFrame(non_dmb_data, columns=non_dmb_columns)
+            # Write both DataFrames to an Excel file with separate sheets
+            excel_file_name = "output.xlsx"
+            with pd.ExcelWriter(excel_file_name, engine='xlsxwriter') as writer:
+                dmb_df.to_excel(writer, sheet_name='DMB', index=False)
+                non_dmb_df.to_excel(writer, sheet_name='NON-DMB', index=False)
+
+            # Open the file in binary mode for streaming
+            excel_file_content_all = open(excel_file_name, "rb")
+
+            # Create a streaming response for the Excel file
+            response_all = StreamingResponse(iter([excel_file_content_all.read()]),
+                                            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            response_all.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+
+            # Optionally, close the file to free up resources
+            excel_file_content_all.close()
+
+            # Return the streaming response for "all"
+            return response_all
+
+        elif bank_type_filter.lower().strip() == "dmb":
+
+            columns = ["Routing_Number","product_code","Billing_date","Amount"]
+            
+            txt_data = io.StringIO()
+            txt_data.write('\t'.join(columns) + '\n')
+
+            for row in query:
+                routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
+                product_code = row.get("company",{}).get("banking_information",{}).get("product_code",None)
+                billing_date = row.get("end_date",None)
+                amount = float(row.get("amount",0))
+
+                # Convert the date to the desired format ("yyyymmdd")
+                formatted_billing_date = datetime.datetime.strptime(billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
+
+                # Write the data to the StringIO object with tab-separated values
+                txt_data.write(f"{routing_number}\t{product_code}\t{formatted_billing_date}\t{amount}\n")
+
+            # Reset the pointer to the beginning of the StringIO object
+            txt_data.seek(0)
+
+            # Create a streaming response for the TXT file
+            response = StreamingResponse(iter([txt_data.getvalue()]), media_type="text/plain")
+            response.headers["Content-Disposition"] = f"attachment;filename={txt_file_name}"
+
+            # Optionally, close the StringIO object to free up resources
+            txt_data.close()
+
+            # Return the streaming response
+            return response
+
+
+        elif bank_type_filter.lower().strip() == "non-dmb":
+            
+            columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
+
+            # Initialize a list to store rows
+            data = []
+
+            # Populate the data list with rows
+            for idx, row in enumerate(query):
+                serial_no = idx + 1
+                account_number = row.get("company", {}).get("banking_information", {}).get("billing_account_number", None)
+                sort_code = row.get("company", {}).get("banking_information", {}).get("sort_code", None)
+                payee_beneficiary = row.get("company", {}).get("banking_information", {}).get("payee_beneficiary", None)
+                amount = float(row.get("amount", 0))
+                narration = "N-Face Billing"
+                payer = "NIBSS PLC"
+                debit_sort_code = ""
+                merchant_id = ""
+                crdr = "DR"
+                currency = "NGN"
+                cust_code = ""
+                beneficiary_bvn = ""
+                payer_bvn = ""
+                billing_date = row.get("end_date", None)
+
+                data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
+                            debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
+
+            # Create a DataFrame from the data and columns
+            df = pd.DataFrame(data, columns=columns)
+
+            # Specify the Excel file name
+            excel_file_name = "output.xlsx"
+
+            # Write the DataFrame to an Excel file
+            df.to_excel(excel_file_name, index=False)
+
+            # Open the file in binary mode for streaming
+            excel_file_content = open(excel_file_name, "rb")
+
+            # Create a streaming response for the Excel file
+            response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+
+            # Optionally, close the file to free up resources
+            excel_file_content.close()
+
+            # Return the streaming response
+            return response
+            
+
 # Invoice
 @api.get("/invoice/stats")
 def get_invoice_stats(
