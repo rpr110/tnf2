@@ -404,7 +404,8 @@ def create_employee(
                 phone_number=req_body.phone_number,
                 employee_profile_pic=req_body.employee_profile_pic,
                 company_id=company_data.company_id,
-                role_id=role_data.role_id
+                role_id=role_data.role_id,
+                is_active=True
             )
 
             try:
@@ -485,6 +486,7 @@ def modify_employee(
                 employee_data.employee_name = req_body.employee_name
                 employee_data.phone_number = req_body.phone_number
                 employee_data.employee_profile_pic = req_body.employee_profile_pic
+                employee_data.is_active = req_body.is_active
 
                 session.commit()
                 session.refresh(employee_data)

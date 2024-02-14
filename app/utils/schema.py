@@ -71,6 +71,7 @@ class ModifyEmployeeDataRequest(BaseModel):
     employee_name:Optional[str]
     phone_number:Optional[str]
     employee_profile_pic:Optional[str]
+    is_active:bool = 1
 
 class ModifyEmployeePasswordRequest(BaseModel):
     old_password:Optional[str]
