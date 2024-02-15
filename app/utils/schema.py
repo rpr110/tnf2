@@ -107,6 +107,7 @@ class RegisterClientRequest(BaseModel):
     # Company Info
     company_name:str
     client_id:Optional[str]
+    auto_disable_days:Optional[int]
 
     # Company Banking Info
     bank_type_id:Optional[str]
@@ -123,6 +124,7 @@ class UpdateCompanyRequest(BaseModel):
     company_name:str
     client_id:str
     is_active:bool
+    auto_disable_days:Optional[int]
 
 class UpdateCompanyBillingRequest(BaseModel):
     email_id1:str

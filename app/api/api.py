@@ -1525,7 +1525,8 @@ def onboard_client(
             company_data = Company(
                 company_name=req_body.company_name,
                 is_active=True,
-                client_id=req_body.client_id
+                client_id=req_body.client_id,
+                auto_disable_days=req_body.auto_disable_days,
             )
 
             session.add(company_data)
@@ -1690,6 +1691,7 @@ def update_company(
             company_data.company_name = req_body.company_name
             company_data.client_id = req_body.client_id
             company_data.is_active = req_body.is_active
+            company_data.auto_disable_days = req_body.auto_disable_days
 
             try:
                 session.flush()
