@@ -13,13 +13,14 @@ import sqlalchemy
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload, joinedload, aliased
 
+import requests
 
 from fastapi import APIRouter, Body, Depends, File, UploadFile, Form, Query, status, Request, Path, Header
 from fastapi.responses import ORJSONResponse, StreamingResponse
 
 from app.utils.dependencies import generateJwtToken, decodeJwtTokenDependancy
 from app.utils.schema import *
-from app import database_client, email_client, otp_client, redis_client
+from app import database_client, email_client, otp_client, redis_client, config
 from app.utils.models import *
 from app.utils.utils import *
 
@@ -44,6 +45,24 @@ def login(req_body:LoginRequest=Body(...)):
     # create request id
     _id = str(uuid.uuid4())
 
+    _email_id = req_body.email_id
+    if req_body.msauth_token:
+        ms_auth_headers = {"authorization":req_body.msauth_token}
+        response = requests.get(f"{config.nibss_msauth_advised_url}/{config.nibss_msauth_endpoint}?applicationName={config.nibss_msauth_app_name}", headers=headers)
+        if response.status_code != status.HTTP_200_OK:
+            response_data = response.json()
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message="invalid credentials")
+            _data = None
+            _error = BaseError(error_message=response_data.get("message","invalid credentials"))
+            _status_code = status.HTTP_401_UNAUTHORIZED
+            _content = _response(meta=_meta, data=_data, error=_error)
+            return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+        else:
+            response_data = response.json()
+            _email_id = response_data.get("emails",{[]})[0]
+
+
     # create session with db
     with database_client.Session() as session:
 
@@ -53,7 +72,7 @@ def login(req_body:LoginRequest=Body(...)):
         ).options(
             selectinload(Employee.role), selectinload(Employee.company)
         ).filter(
-            Employee.email_id == req_body.email_id
+            Employee.email_id == _email_id
         ).first()
 
         # check if employee exists / wrong password / is active (ie. is account disabled)

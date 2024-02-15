@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     app_docs_basic_username:str
     app_docs_basic_password:SecretStr
 
+    # NIBSS Config
+    nibss_msauth_advised_url:str
+    nibss_msauth_endpoint:str
+    nibss_msauth_app_name:str
 
     # Database Config
     db_type:str

@@ -43,8 +43,9 @@ class TokenResponse(BaseResponse):
 
 
 class LoginRequest(BaseModel):
-    email_id:str
-    password:str
+    email_id:Optional[str]
+    password:Optional[str]
+    msauth_token:Optional[str]
 
 class ForgotPasswordRequest(BaseModel):
     email_id:str
