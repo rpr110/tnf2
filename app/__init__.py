@@ -52,6 +52,10 @@ logger.info(f"Application Started")
 database_client = DatabaseClient(db_username=config.db_username.get_secret_value(),db_password=config.db_password.get_secret_value(),db_host=config.db_host,db_name=config.db_name,db_port=config.db_port,db_type=config.db_type)
 logger.debug(f"Setup DatabaseClient {database_client}")
 
+# Setup RedisClient
+redis_client = RedisClient(host=config.redis_host,port=config.redis_port,password=config.redis_password.get_secret_value())
+logger.debug(f"Setup RedisClient {redis_client}")
+
 # Setup EmailClient
 email_client = EmailClient(email_sender=config.email_sender,email_password=config.email_password.get_secret_value())
 logger.debug(f"Setup EmailClient {email_client}")

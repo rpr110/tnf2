@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     db_name:str
     db_port:int
 
+    # Redis Config
+    redis_host:str
+    redis_password:SecretStr
+    redis_port:int
+
     # Email Config
     email_sender:str
     email_password:SecretStr

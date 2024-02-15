@@ -19,7 +19,7 @@ from fastapi.responses import ORJSONResponse, StreamingResponse
 
 from app.utils.dependencies import generateJwtToken, decodeJwtTokenDependancy
 from app.utils.schema import *
-from app import database_client, email_client, otp_client
+from app import database_client, email_client, otp_client, redis_client
 from app.utils.models import *
 from app.utils.utils import *
 
@@ -85,6 +85,8 @@ def login(req_body:LoginRequest=Body(...)):
             _data = None
             _error = None
             _status_code = status.HTTP_200_OK
+
+            redis_client.set_data(key=jwt_token, value=employee_data.get("email_id"), ttl=100000)
 
 
     _content = _response(meta=_meta, data=_data, error=_error)

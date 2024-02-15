@@ -12,6 +12,34 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 
+import redis
+
+##################
+## Redis Client ##
+##################
+
+class RedisClient:
+    def __init__(self, host:str, port:int, password:str) -> None:
+        # Initialize host
+        self.host = host
+        # Initialize port
+        self.port = port
+        # Initialize password
+        self.password = password
+        # Setup connection string
+        self.connection_string = f"redis://:{self.password}@{self.host}:{self.port}"
+        # Create redis object
+        self.redis_obj = redis.from_url(self.connection_string)
+
+    def set_data(self, key:str, value:str, ttl:int=None) -> None:
+        if ttl is None:
+            self.redis_obj.set(key, value)
+        else:
+            self.redis_obj.setex(key, ttl, value)
+
+    def get_data(self, key:str) -> str:
+        return self.redis_obj.get(key)
+
 #####################
 ## Database Client ##
 #####################

@@ -7,6 +7,7 @@ from jose import jwt
 from fastapi import Header, status
 from fastapi.exceptions import HTTPException
 
+from app import redis_client
 from app.utils.models import Employee, Roles
 from app.utils.schema import BaseResponse, BaseMeta, BaseError
 
@@ -36,6 +37,12 @@ def decodeJwtToken(token:str) -> dict:
 
 async def decodeJwtTokenDependancy(token:str=Header(...,alias="x-access-token")):
     try:
+
+        
+        token_email = redis_client.get_data(token)
+        if not token_email:
+            raise Exception("token doesnt exist")
+
         decoded_token = decodeJwtToken(token)
         return decoded_token
     except Exception as e:
