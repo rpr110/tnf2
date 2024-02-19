@@ -670,7 +670,7 @@ def get_nface_logs(
     *,
     x_verbose:bool=Header(True, alias="x-verbose"),
     x_ignore_pagination:bool=Header(False, alias="x-ignore-pagination"),
-    x_response_type:str=Header("json",alias="x-response-type"), # json/ csv/ excel
+    x_response_type:str=Header("json",alias="x-response-type"), # json/ csv/ csv-transaction
 
     company_id:str=Query(...),
     status_filter:str=Query(...), # success, all, failure, issue
@@ -767,6 +767,71 @@ def get_nface_logs(
         response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
         response.headers["Content-Disposition"] = "attachment;filename=output.csv"
         return response
+    elif x_response_type == "csv-transaction":
+    
+        
+        columns = ["Transaction ID/Ref","Sending_institution","Beneficiary_institution","Terminal", "Transaction Type","Transaction Amount", "Fee", "VAT Fee", "Platform Fee", "Sending_bank fee", "Beneficiary Bank Fee", "Introducer fee", "Transaction Date", "Sender Account Name", "Sender Account Number", "Beneficiary Account Name", "Beneficiary Account Number"]
+
+        formatted_date = end_datetime.strftime("%Y%m%d")
+
+
+
+        # Initialize a list to store rows
+        data = []
+
+        # Populate the data list with rows
+        for idx, row in enumerate(log_data):
+
+            transaction_id_ref = row.get("session_code")
+            sending_institution = row.get("company",{}).get("company_name")
+            beneficiary_institution = "NIBSS"
+            terminal = None
+            transaction_type = "CR"
+
+            if ( row.get("service",{}).get("service_name") == "PASSIVE_LIVENESS" and row.get("status",{}).get("status") != "ISSUE"):
+                transaction_amount = 50
+            elif ( row.get("service",{}).get("service_name") == "FACE_COMPARISON" and row.get("status",{}).get("status") != "ISSUE"):
+                transaction_amount = 10
+            else:
+                transaction_amount = 0
+
+            # fee = ...
+            vat_fee = row.get("company",{}).get("billing_information",{}).get("vat", 0)
+            platform_fee = 0
+            sending_bank_fee = 0
+            beneficiary_bank_fee = 0
+            introducer_fee = 0
+            fee = transaction_amount + (vat_fee*transaction_amount)
+            transaction_date = row.get("create_date",None)
+            sender_account_name = row.get("company",{}).get("banking_information",{}).get("billing_account_name")
+            sender_account_number = row.get("company",{}).get("banking_information",{}).get("billing_account_number")
+            beneficiary_account_name = "NIBSS"
+            beneficiary_account_number = None
+
+            data.append([transaction_id_ref, sending_institution, beneficiary_institution, terminal, transaction_type, transaction_amount, fee, vat_fee, platform_fee, sending_bank_fee, beneficiary_bank_fee, introducer_fee, transaction_date, sender_account_name, sender_account_number, beneficiary_account_name, beneficiary_account_number])
+
+        # Create a DataFrame from the data and columns
+        df = pd.DataFrame(data, columns=columns)
+
+        # Specify the Excel file name
+        excel_file_name = f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx"
+
+        # Write the DataFrame to an Excel file
+        df.to_excel(excel_file_name, index=False)
+
+        # Open the file in binary mode for streaming
+        excel_file_content = open(excel_file_name, "rb")
+
+        # Create a streaming response for the Excel file
+        response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+
+        # Optionally, close the file to free up resources
+        excel_file_content.close()
+
+        # Return the streaming response
+        return response
+        
 
 # Stats
 @api.get("/nface_logs/stats")
@@ -1021,7 +1086,7 @@ def get_invoice(
             columns = ["Routing_Number","product_code","Billing_date","Amount"]
             
             txt_data = io.StringIO()
-            txt_data.write('\t'.join(columns) + '\n')
+            # txt_data.write('\t'.join(columns) + '\n')
 
             for row in query:
                 routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
@@ -1047,7 +1112,6 @@ def get_invoice(
 
             # Return the streaming response
             return response
-
 
         elif bank_type_filter.lower().strip() == "non-dmb":
             
@@ -1081,7 +1145,7 @@ def get_invoice(
             df = pd.DataFrame(data, columns=columns)
 
             # Specify the Excel file name
-            excel_file_name = "output.xlsx"
+            excel_file_name = f"N-Face_Billing_OFI_{formatted_date}.xlsx"
 
             # Write the DataFrame to an Excel file
             df.to_excel(excel_file_name, index=False)
