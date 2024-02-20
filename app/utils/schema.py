@@ -45,7 +45,7 @@ class TokenResponse(BaseResponse):
 class LoginRequest(BaseModel):
     email_id:Optional[str]
     password:Optional[str]
-    msauth_token:Optional[str]
+    msauth_token:Optional[str] = None
 
 class ForgotPasswordRequest(BaseModel):
     email_id:str
