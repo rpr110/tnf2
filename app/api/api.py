@@ -758,22 +758,31 @@ def get_nface_logs(
     elif x_response_type == "csv":
         
 
-        csv_data = io.StringIO()
-        csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
-        csv_writer.writeheader()
-        csv_writer.writerows(log_data)
+        # csv_data = io.StringIO()
+        # csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
+        # csv_writer.writeheader()
+        # csv_writer.writerows(log_data)
 
-        # Create a streaming response
-        response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
-        response.headers["Content-Disposition"] = "attachment;filename=output.csv"
-        return response
+        # # Create a streaming response
+        # response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
+        # response.headers["Content-Disposition"] = "attachment;filename=output.csv"
+        # return response
+        
+
+        if log_data and len(log_data) > 0 :
+            jsonschema_columns = list( log_data[0].keys() )  
+            jsonschema_content = [[d[column] for column in jsonschema_columns] for d in log_data] 
+            return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":"output.csv","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+        
+        return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
+
+
     elif x_response_type == "csv-transaction":
     
         
         columns = ["Transaction ID/Ref","Sending_institution","Beneficiary_institution","Terminal", "Transaction Type","Transaction Amount", "Fee", "VAT Fee", "Platform Fee", "Sending_bank fee", "Beneficiary Bank Fee", "Introducer fee", "Transaction Date", "Sender Account Name", "Sender Account Number", "Beneficiary Account Name", "Beneficiary Account Number"]
 
         formatted_date = end_datetime.strftime("%Y%m%d")
-
 
 
         # Initialize a list to store rows
@@ -810,27 +819,34 @@ def get_nface_logs(
 
             data.append([transaction_id_ref, sending_institution, beneficiary_institution, terminal, transaction_type, transaction_amount, fee, vat_fee, platform_fee, sending_bank_fee, beneficiary_bank_fee, introducer_fee, transaction_date, sender_account_name, sender_account_number, beneficiary_account_name, beneficiary_account_number])
 
-        # Create a DataFrame from the data and columns
-        df = pd.DataFrame(data, columns=columns)
+        if data and len(data) > 0 :
+            jsonschema_columns = columns
+            jsonschema_content = data
+            return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+        
+        return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
-        # Specify the Excel file name
-        excel_file_name = f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx"
+        # # Create a DataFrame from the data and columns
+        # df = pd.DataFrame(data, columns=columns)
 
-        # Write the DataFrame to an Excel file
-        df.to_excel(excel_file_name, index=False)
+        # # Specify the Excel file name
+        # excel_file_name = f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx"
 
-        # Open the file in binary mode for streaming
-        excel_file_content = open(excel_file_name, "rb")
+        # # Write the DataFrame to an Excel file
+        # df.to_excel(excel_file_name, index=False)
 
-        # Create a streaming response for the Excel file
-        response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+        # # Open the file in binary mode for streaming
+        # excel_file_content = open(excel_file_name, "rb")
 
-        # Optionally, close the file to free up resources
-        excel_file_content.close()
+        # # Create a streaming response for the Excel file
+        # response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        # response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
 
-        # Return the streaming response
-        return response
+        # # Optionally, close the file to free up resources
+        # excel_file_content.close()
+
+        # # Return the streaming response
+        # return response
         
 
 # Stats
@@ -1059,27 +1075,38 @@ def get_invoice(
                     non_dmb_data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
                             debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
 
-            dmb_df = pd.DataFrame(dmb_data, columns=dmb_columns)
-            non_dmb_df = pd.DataFrame(non_dmb_data, columns=non_dmb_columns)
-            # Write both DataFrames to an Excel file with separate sheets
-            excel_file_name = "output.xlsx"
-            with pd.ExcelWriter(excel_file_name, engine='xlsxwriter') as writer:
-                dmb_df.to_excel(writer, sheet_name='DMB', index=False)
-                non_dmb_df.to_excel(writer, sheet_name='NON-DMB', index=False)
+            if dmb_data and non_dmb_data:
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","columns1":dmb_columns,"contents1":dmb_data,"columns2":non_dmb_columns,"contents2":non_dmb_data},"error":None}
+            elif dmb_data and not non_dmb_data:
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","columns1":dmb_columns,"contents1":dmb_data,"columns2":non_dmb_columns,"contents2":None},"error":None}
+            elif not dmb_data and dmb_data:
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","columns1":dmb_columns,"contents1":None,"columns2":non_dmb_columns,"contents2":non_dmb_data},"error":None}
+            elif not dmb_data and not dmb_data:
+                return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
-            # Open the file in binary mode for streaming
-            excel_file_content_all = open(excel_file_name, "rb")
 
-            # Create a streaming response for the Excel file
-            response_all = StreamingResponse(iter([excel_file_content_all.read()]),
-                                            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response_all.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
 
-            # Optionally, close the file to free up resources
-            excel_file_content_all.close()
+            # dmb_df = pd.DataFrame(dmb_data, columns=dmb_columns)
+            # non_dmb_df = pd.DataFrame(non_dmb_data, columns=non_dmb_columns)
+            # # Write both DataFrames to an Excel file with separate sheets
+            # excel_file_name = "output.xlsx"
+            # with pd.ExcelWriter(excel_file_name, engine='xlsxwriter') as writer:
+            #     dmb_df.to_excel(writer, sheet_name='DMB', index=False)
+            #     non_dmb_df.to_excel(writer, sheet_name='NON-DMB', index=False)
 
-            # Return the streaming response for "all"
-            return response_all
+            # # Open the file in binary mode for streaming
+            # excel_file_content_all = open(excel_file_name, "rb")
+
+            # # Create a streaming response for the Excel file
+            # response_all = StreamingResponse(iter([excel_file_content_all.read()]),
+            #                                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            # response_all.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+
+            # # Optionally, close the file to free up resources
+            # excel_file_content_all.close()
+
+            # # Return the streaming response for "all"
+            # return response_all
 
         elif bank_type_filter.lower().strip() == "dmb":
 
@@ -1087,6 +1114,7 @@ def get_invoice(
             
             txt_data = io.StringIO()
             # txt_data.write('\t'.join(columns) + '\n')
+            data = []
 
             for row in query:
                 routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
@@ -1099,19 +1127,28 @@ def get_invoice(
 
                 # Write the data to the StringIO object with tab-separated values
                 txt_data.write(f"{routing_number}\t{product_code}\t{formatted_billing_date}\t{amount}\n")
+                data.append([routing_number,product_code,formatted_billing_date,amount])
 
-            # Reset the pointer to the beginning of the StringIO object
-            txt_data.seek(0)
+            if data and len(data) > 0 :
+                jsonschema_columns = columns
+                jsonschema_content = data
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":txt_file_name,"columns":None,"contents":jsonschema_content},"error":None}
+            
+            return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
-            # Create a streaming response for the TXT file
-            response = StreamingResponse(iter([txt_data.getvalue()]), media_type="text/plain")
-            response.headers["Content-Disposition"] = f"attachment;filename={txt_file_name}"
 
-            # Optionally, close the StringIO object to free up resources
-            txt_data.close()
+            # # Reset the pointer to the beginning of the StringIO object
+            # txt_data.seek(0)
 
-            # Return the streaming response
-            return response
+            # # Create a streaming response for the TXT file
+            # response = StreamingResponse(iter([txt_data.getvalue()]), media_type="text/plain")
+            # response.headers["Content-Disposition"] = f"attachment;filename={txt_file_name}"
+
+            # # Optionally, close the StringIO object to free up resources
+            # txt_data.close()
+
+            # # Return the streaming response
+            # return response
 
         elif bank_type_filter.lower().strip() == "non-dmb":
             
@@ -1141,27 +1178,35 @@ def get_invoice(
                 data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
                             debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
 
-            # Create a DataFrame from the data and columns
-            df = pd.DataFrame(data, columns=columns)
 
-            # Specify the Excel file name
-            excel_file_name = f"N-Face_Billing_OFI_{formatted_date}.xlsx"
+            if data and len(data) > 0 :
+                jsonschema_columns = columns
+                jsonschema_content = data
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_OFI_{formatted_date}.xlsx","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+            
+            return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
-            # Write the DataFrame to an Excel file
-            df.to_excel(excel_file_name, index=False)
+            # # Create a DataFrame from the data and columns
+            # df = pd.DataFrame(data, columns=columns)
 
-            # Open the file in binary mode for streaming
-            excel_file_content = open(excel_file_name, "rb")
+            # # Specify the Excel file name
+            # excel_file_name = f"N-Face_Billing_OFI_{formatted_date}.xlsx"
 
-            # Create a streaming response for the Excel file
-            response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+            # # Write the DataFrame to an Excel file
+            # df.to_excel(excel_file_name, index=False)
 
-            # Optionally, close the file to free up resources
-            excel_file_content.close()
+            # # Open the file in binary mode for streaming
+            # excel_file_content = open(excel_file_name, "rb")
 
-            # Return the streaming response
-            return response
+            # # Create a streaming response for the Excel file
+            # response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            # response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+
+            # # Optionally, close the file to free up resources
+            # excel_file_content.close()
+
+            # # Return the streaming response
+            # return response
             
 
 # Invoice
