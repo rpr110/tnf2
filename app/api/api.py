@@ -664,6 +664,13 @@ def delete_employee(
 ## Dashboard ##
 ###############
 
+def lists_to_list_of_dicts(columns, data):
+    list_of_dicts = []
+    for row in data:
+        dict_row = {column: value for column, value in zip(columns, row)}
+        list_of_dicts.append(dict_row)
+    return list_of_dicts
+
 # Logs
 @api.get("/nface_logs")
 def get_nface_logs(
@@ -772,7 +779,8 @@ def get_nface_logs(
         if log_data and len(log_data) > 0 :
             jsonschema_columns = list( log_data[0].keys() )  
             jsonschema_content = [[d[column] for column in jsonschema_columns] for d in log_data] 
-            return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":"output.csv","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+            # return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":"output.csv","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+            return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":"output.csv","data":log_data},"error":None}
         
         return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
@@ -820,9 +828,14 @@ def get_nface_logs(
             data.append([transaction_id_ref, sending_institution, beneficiary_institution, terminal, transaction_type, transaction_amount, fee, vat_fee, platform_fee, sending_bank_fee, beneficiary_bank_fee, introducer_fee, transaction_date, sender_account_name, sender_account_number, beneficiary_account_name, beneficiary_account_number])
 
         if data and len(data) > 0 :
+
+
             jsonschema_columns = columns
             jsonschema_content = data
-            return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+            jsonschema_data = lists_to_list_of_dicts(jsonschema_columns,jsonschema_content)
+
+            # return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+            return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx","data":jsonschema_data},"error":None}
         
         return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
@@ -1075,12 +1088,14 @@ def get_invoice(
                     non_dmb_data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
                             debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
 
+
+
             if dmb_data and non_dmb_data:
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","columns1":dmb_columns,"contents1":dmb_data,"columns2":non_dmb_columns,"contents2":non_dmb_data},"error":None}
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","data1":lists_to_list_of_dicts(dmb_columns,dmb_data),"data2":lists_to_list_of_dicts(non_dmb_columns,non_dmb_data)},"error":None}
             elif dmb_data and not non_dmb_data:
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","columns1":dmb_columns,"contents1":dmb_data,"columns2":non_dmb_columns,"contents2":None},"error":None}
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","data1":lists_to_list_of_dicts(dmb_columns,dmb_data),"data2":None},"error":None}
             elif not dmb_data and dmb_data:
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","columns1":dmb_columns,"contents1":None,"columns2":non_dmb_columns,"contents2":non_dmb_data},"error":None}
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","data1":None,"data2":lists_to_list_of_dicts(non_dmb_columns,non_dmb_data)},"error":None}
             elif not dmb_data and not dmb_data:
                 return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
@@ -1132,7 +1147,8 @@ def get_invoice(
             if data and len(data) > 0 :
                 jsonschema_columns = columns
                 jsonschema_content = data
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":txt_file_name,"columns":None,"contents":jsonschema_content},"error":None}
+                jsonschema_data = lists_to_list_of_dicts(jsonschema_columns,jsonschema_content)
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":txt_file_name,"data":jsonschema_data},"error":None}
             
             return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
@@ -1182,7 +1198,9 @@ def get_invoice(
             if data and len(data) > 0 :
                 jsonschema_columns = columns
                 jsonschema_content = data
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_OFI_{formatted_date}.xlsx","columns":jsonschema_columns,"contents":jsonschema_content},"error":None}
+                jsonschema_data = lists_to_list_of_dicts(jsonschema_columns,jsonschema_content)
+
+                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_OFI_{formatted_date}.xlsx","data":jsonschema_data},"error":None}
             
             return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
