@@ -40,6 +40,9 @@ class RedisClient:
     def get_data(self, key:str) -> str:
         return self.redis_obj.get(key)
 
+    def delete_key(self, key: str) -> int:
+        return self.redis_obj.delete(key)
+        
 #####################
 ## Database Client ##
 #####################

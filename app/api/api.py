@@ -378,6 +378,11 @@ def get_employee(
                 _error = None
                 _status_code = status.HTTP_200_OK
 
+                is_first_login = redis_client.get_data(key=f"NEW_{employee_data.get('employee_id')}")
+                employee_data["is_first_login"] = True if is_first_login else False
+                # redis_client.delete_key(f"NEW_{employee_data.get('employee_id')}")
+
+
             else:
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message="user not found")
@@ -440,6 +445,10 @@ def create_employee(
                 _data = Employee_MF.model_validate(employee_data).model_dump()
                 _error = None
                 _status_code = status.HTTP_200_OK
+
+                redis_client.set_data(key=f"NEW_{employee_data.public_id}", value=1, ttl=None)
+
+                
             except sqlalchemy.exc.IntegrityError as e:
 
                 _response = BaseResponse
@@ -592,6 +601,8 @@ def update_password(
                     _status_code = status.HTTP_200_OK
 
                     session.commit()
+
+                redis_client.delete_key(f"NEW_{employee_data.public_id}")
 
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
@@ -955,7 +966,6 @@ def get_invoice(
     items_per_page:int= Query(15),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request
-
 ):
     _id = str(uuid.uuid4())
     role_id =  decoded_token.get("rid")
