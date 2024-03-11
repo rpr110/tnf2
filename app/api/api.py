@@ -592,7 +592,27 @@ def update_password(
                     _data = None
                     _error = BaseError(error_message="invalid credentials")
                     _status_code = status.HTTP_403_FORBIDDEN
+                elif req_body.new_password in (getattr(employee_data, f"password_old_{i}") for i in range(1, 13)) or req_body.new_password == employee_data.password:
+                    _response = BaseResponse
+                    _meta = BaseMeta(_id=_id, successful=False, message="new password cannot be the same as old password")
+                    _data = None
+                    _error = BaseError(error_message="new password cannot be the same as old password")
+                    _status_code = status.HTTP_403_FORBIDDEN
                 else:
+
+                    employee_data.password_old_12 = employee_data.password_old_11
+                    employee_data.password_old_11 = employee_data.password_old_10
+                    employee_data.password_old_10 = employee_data.password_old_9
+                    employee_data.password_old_9 = employee_data.password_old_8
+                    employee_data.password_old_8 = employee_data.password_old_7
+                    employee_data.password_old_7 = employee_data.password_old_6
+                    employee_data.password_old_6 = employee_data.password_old_5
+                    employee_data.password_old_5 = employee_data.password_old_4
+                    employee_data.password_old_4 = employee_data.password_old_3
+                    employee_data.password_old_3 = employee_data.password_old_2
+                    employee_data.password_old_2 = employee_data.password_old_1
+                    employee_data.password_old_1 = employee_data.password
+
                     employee_data.password = req_body.new_password
                     _response = BaseResponse
                     _meta = BaseMeta(_id=_id, successful=True, message="updated")
