@@ -250,6 +250,7 @@ def get_all_employees(
     company_id:str=Query(...),
     page_no:int= Query(1),
     items_per_page:int= Query(15),
+    search:str=Query(None),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
@@ -282,6 +283,9 @@ def get_all_employees(
                     Company.public_id == company_id
                 )
             
+            if search:
+                query = query.filter(Employee.email_id.like(f"%{search}%"))
+
             # get total count for pagination
             total_count = session.query(func.count()).select_from(Employee).scalar()
 
