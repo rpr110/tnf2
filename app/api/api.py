@@ -1195,36 +1195,36 @@ def get_invoice(
                             debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
 
 
-            if data and len(data) > 0 :
-                jsonschema_columns = columns
-                jsonschema_content = data
-                jsonschema_data = lists_to_list_of_dicts(jsonschema_columns,jsonschema_content)
+            # if data and len(data) > 0 :
+            #     jsonschema_columns = columns
+            #     jsonschema_content = data
+            #     jsonschema_data = lists_to_list_of_dicts(jsonschema_columns,jsonschema_content)
 
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_OFI_{formatted_date}.xlsx","data":jsonschema_data},"error":None}
+            #     return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_OFI_{formatted_date}.xlsx","data":jsonschema_data},"error":None}
             
-            return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
+            # return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
 
-            # # Create a DataFrame from the data and columns
-            # df = pd.DataFrame(data, columns=columns)
+            # Create a DataFrame from the data and columns
+            df = pd.DataFrame(data, columns=columns)
 
-            # # Specify the Excel file name
-            # excel_file_name = f"N-Face_Billing_OFI_{formatted_date}.xlsx"
+            # Specify the Excel file name
+            excel_file_name = f"N-Face_Billing_OFI_{formatted_date}.xlsx"
 
-            # # Write the DataFrame to an Excel file
-            # df.to_excel(excel_file_name, index=False)
+            # Write the DataFrame to an Excel file
+            df.to_excel(excel_file_name, index=False)
 
-            # # Open the file in binary mode for streaming
-            # excel_file_content = open(excel_file_name, "rb")
+            # Open the file in binary mode for streaming
+            excel_file_content = open(excel_file_name, "rb")
 
-            # # Create a streaming response for the Excel file
-            # response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            # response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+            # Create a streaming response for the Excel file
+            response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
 
-            # # Optionally, close the file to free up resources
-            # excel_file_content.close()
+            # Optionally, close the file to free up resources
+            excel_file_content.close()
 
-            # # Return the streaming response
-            # return response
+            # Return the streaming response
+            return response
             
 
 # Invoice
