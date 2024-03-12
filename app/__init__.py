@@ -82,9 +82,31 @@ app = FastAPI(
     default_response_class=ORJSONResponse,
     docs_url=None,
     redoc_url=None
-    )
+)
 
 logger.debug(f"FastAPI Object Initialized")
+
+
+
+###############################
+## Request Logger Middleware ##
+###############################
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    session_code = str(uuid.uuid4())
+
+    # Log the request received, including headers and body
+    logger.info(f"[{session_code}] Received - Client Host:{request.client.host} Request:{request.method} {request.url.path} Headers:{request.headers}")
+
+    request.state.session_code = session_code
+    response = await call_next(request)
+    execution_time = time.time() - start_time
+    # Log response
+    logger.info(f"[{session_code}] Sent - Client Host:{request.client.host} Request:{request.method} {request.url.path} Status Code:{response.status_code} Execution Time:{execution_time}")    
+    return response
+
 
 
 ################
@@ -100,26 +122,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 logger.debug(f"Added CORS middleware")
-
-#################################
-## On StartUp and OnEnd Events ##
-#################################
-
-# Create connection to DB on startup
-@app.on_event("startup")
-async def startup_event():
-    # logger.debug(f"Initializing db connection")
-    # await dbc.set_pool()
-    # logger.debug(f"DB connection Successful")
-    ...
-
-
-# Close DB connection on shutdown
-@app.on_event("shutdown")
-async def shutdown_event():
-    # await dbc.delete_pool()
-    # logger.debug(f"DB connection deleted. Application will shutdown now")
-    ...
 
 
 ################
@@ -198,9 +200,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def unicorn_exception_handler(request: Request, exc: Exception):    
     # Log the error in log file
     _error = str(exc.with_traceback(None))
-    logger.error(f"{_error}")
     # Get session code
-    session_code = str(uuid.uuid4())
+    session_code = request.state.session_code
+    
+    # log error
+    logger.error(f"{_error}")
+
     
     # Create responsee content
     _content = BaseResponse(
