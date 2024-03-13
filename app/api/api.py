@@ -382,6 +382,7 @@ def get_all_employees(
         _status_code = status.HTTP_200_OK
 
     else:
+        # create unauthorized response data
         logger.info(f"[{session_code}] create unauthorized response data")
         _response_message = "unauthorized"
         _response = BaseResponse
@@ -390,6 +391,7 @@ def get_all_employees(
         _error = BaseError(error_message=_response_message)
         _status_code = status.HTTP_403_FORBIDDEN
 
+    # create response
     logger.info(f"[{session_code}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
@@ -875,13 +877,6 @@ def delete_employee(
 ## Dashboard ##
 ###############
 
-def lists_to_list_of_dicts(columns, data):
-    list_of_dicts = []
-    for row in data:
-        dict_row = {column: value for column, value in zip(columns, row)}
-        list_of_dicts.append(dict_row)
-    return list_of_dicts
-
 # Logs
 @api.get("/nface_logs")
 def get_nface_logs(
@@ -1095,18 +1090,27 @@ def get_nface_stats(
     # create request id
     _id = request.state.session_code
     # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
         _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
-        _error = BaseError(error_message="unauthorized")
+        _error = BaseError(error_message=_response_message)
         _status_code = status.HTTP_403_FORBIDDEN
     else:
 
+        # create session with db
+        logger.info(f"[{session_code}] create db connection")
         with database_client.Session() as session:
             
+            # create query
+            logger.info(f"[{session_code}] create query")
             query = session.query(
                 ServiceMaster.service_name,
                 StatusMaster.status,
@@ -1121,6 +1125,8 @@ def get_nface_stats(
 
 
             if company_id != "all":
+                # add company_id filter to query
+                logger.info(f"[{session_code}] add company_id filter to query")
                 query = query.join(
                     Company,
                     Company.company_id == NFaceLogs.company_id
@@ -1128,16 +1134,19 @@ def get_nface_stats(
                     Company.public_id == company_id
                 )
 
-
+            # add datetime filter to query
+            logger.info(f"[{session_code}] add datetime filter to query")
             query = query.filter(
                 NFaceLogs.create_date >= start_datetime,
                 NFaceLogs.create_date <= end_datetime
             )
 
             # Add grouping and ordering
+            logger.info(f"[{session_code}] add groupby filter to query")
             query = query.group_by(ServiceMaster.service_name, StatusMaster.status,)
 
-
+            # restructure retrieved data
+            logger.info(f"[{session_code}] restructure retrieved data")
             stat_dict = lambda x : {"FAILURE":x.get("FAILURE",0),"SUCCESS":x.get("SUCCESS",0),"ISSUE":x.get("ISSUE",0)}
             if query:
                 query = query.all()
@@ -1150,13 +1159,15 @@ def get_nface_stats(
             for k,v in nested_dict.items():
                 nested_dict[k] = stat_dict(v)
 
-
+            # create response data
+            logger.info(f"[{session_code}] create response data")
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=True, message=None)
             _data = nested_dict
             _error = None
             _status_code = status.HTTP_200_OK
 
+    logger.info(f"[{session_code}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
         
@@ -1177,118 +1188,229 @@ def get_invoice(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request
 ):
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
-        
-        query = session.query(
-            Invoice,
-            BankTypeMaster.bank_type
-        ).join(
-            CompanyBankingInfo,
-            CompanyBankingInfo.company_id==Invoice.company_id
-        ).join(
-            BankTypeMaster,
-            BankTypeMaster.bank_type_id == CompanyBankingInfo.bank_type_id
-        )
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) or (company_id != "all" and role_id != PortalRole.SUPER_ADMIN.value ):
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
+        # create session with db
+        logger.info(f"[{session_code}] create db connection")
+        with database_client.Session() as session:
+            
+            # create query
+            logger.info(f"[{session_code}] create query")
+            query = session.query(
+                Invoice,
+                BankTypeMaster.bank_type
+            ).join(
+                CompanyBankingInfo,
+                CompanyBankingInfo.company_id==Invoice.company_id
+            ).join(
+                BankTypeMaster,
+                BankTypeMaster.bank_type_id == CompanyBankingInfo.bank_type_id
+            )
 
-        if bank_type_filter != "all":
-            query = query.filter(BankTypeMaster.bank_type == bank_type_filter.upper().strip())
+            # add bank type filter to query
+            if bank_type_filter != "all":
+                logger.info(f"[{session_code}] add bank type filter to query")
+                query = query.filter(BankTypeMaster.bank_type == bank_type_filter.upper().strip())
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
+            # add company id filter to query
             if company_id != "all":
+                logger.info(f"[{session_code}] add company id filter to query")
                 query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
 
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
-            if company_id != decoded_token.get("cid") or company_id == "all":
-                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=_successful,
-                        message=_message
-                    ),
-                    data=None,
-                    error=_error
-                )
-                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+            # add status filter to query
+            if status_filter != "all":
+                logger.info(f"[{session_code}] add status filter to query")
+                sf = 1 if status_filter.upper().strip() == "PAID" else 0
+                query = query.filter(Invoice.payment_status == sf)
             
-            query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
+            # add datetime filter to query
+            logger.info(f"[{session_code}] add datetime filter to query")
+            query = query.filter(Invoice.end_date >= start_datetime,
+                                    Invoice.end_date <= end_datetime)
 
-        
-        if status_filter != "all":
-            sf = 1 if status_filter.upper().strip() == "PAID" else 0
-            query = query.filter(Invoice.payment_status == sf)
-        
- 
-        query = query.filter(Invoice.end_date >= start_datetime,
-                                Invoice.end_date <= end_datetime)
+            # add pagination to query
+            if not x_ignore_pagination:
+                logger.info(f"[{session_code}] add pagination to query")
+                offset = (page_no - 1) * items_per_page
+                query = query.order_by(Invoice.end_date).offset(offset).limit(items_per_page)
 
-        if not x_ignore_pagination:
-            offset = (page_no - 1) * items_per_page
-            query = query.order_by(Invoice.end_date).offset(offset).limit(items_per_page)
+            # query db
+            logger.info(f"[{session_code}] query db")
+            invoice_data = query.all()
 
-        query = query.all()
-        if query:
-            query = [ {**q[0].to_dict(), "bank_type":q[-1]} for q in query ]
+            if invoice_data:
+                # format data
+                logger.info(f"[{session_code}] format retreived invoice_data")
+                invoice_data = [  Invoice_MF.model_validate(i).model_dump() for i in invoice_data  ]
+            
+        if x_response_type == "json":
+            logger.info(f"[{session_code}] create response data")
+            _response = PaginationResponse
+            _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
+            _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
+            _data = invoice_data
+            _error = None
+            _status_code = status.HTTP_200_OK
+            return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
 
-    exclude_data_keys = ("invoice_id","company_id","company.company_id","company.billing_id","company.billing_information")
-    for i in range(len(query)):
-        remove_keys_from_dict(query[i], exclude_data_keys)
+        elif x_response_type == "csv":
+            
+            # Extract all billing dates from the query
+            logger.info(f"[{session_code}] extract all billing dates from the query")
+            billing_dates = [row.get("end_date") for row in invoice_data if row.get("end_date")]
+
+            # Find the maximum billing date
+            logger.info(f"[{session_code}] find the maximum billing date")
+            max_billing_date = max(billing_dates) if billing_dates else None
+
+            # Define the TXT file name with the formatted date
+            logger.info(f"[{session_code}] define the TXT file name with the formatted date")
+            if max_billing_date:
+                formatted_date = datetime.datetime.strptime(max_billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
+                txt_file_name = f"N-Face_Billing_Smartdet_{formatted_date}.txt"
+            else:
+                txt_file_name = "N-Face_Billing_Smartdet.txt"
+
+            max_billing_date = max(billing_dates) if billing_dates else None
+
+            # Check bank_type_filter
+            logger.info(f"[{session_code}] check bank_type_filter")
+            if bank_type_filter.lower().strip() == "all":
+                dmb_columns = ["Routing_Number","product_code","Billing_date","Amount"]
+                non_dmb_columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
+
+                dmb_data = []
+                non_dmb_data = []
+                # Check bank_type_filter
+                logger.info(f"[{session_code}] separate relavent dmb and non dmb data")
+                for idx, row in enumerate(invoice_data):
+                    #DMB DATA
+                    if row.get("bank_type").lower() == "dmb":
+                        routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
+                        product_code = row.get("company",{}).get("banking_information",{}).get("product_code",None)
+                        billing_date = row.get("end_date",None)
+                        amount = float(row.get("amount",0))
+
+                        # Convert the date to the desired format ("yyyymmdd")
+                        formatted_billing_date = datetime.datetime.strptime(billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
+                        dmb_data.append([routing_number,product_code,formatted_billing_date,amount])
+
+                    elif row.get("bank_type").lower() == "non-dmb":
+                        #NON DMMB DATA
+                        serial_no = idx + 1
+                        account_number = row.get("company", {}).get("banking_information", {}).get("billing_account_number", None)
+                        sort_code = row.get("company", {}).get("banking_information", {}).get("sort_code", None)
+                        payee_beneficiary = row.get("company", {}).get("banking_information", {}).get("payee_beneficiary", None)
+                        amount = float(row.get("amount", 0))
+                        narration = "N-Face Billing"
+                        payer = "NIBSS PLC"
+                        debit_sort_code = ""
+                        merchant_id = ""
+                        crdr = "DR"
+                        currency = "NGN"
+                        cust_code = ""
+                        beneficiary_bvn = ""
+                        payer_bvn = ""
+                        billing_date = row.get("end_date", None)
+
+                        non_dmb_data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
+                                debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
 
 
 
-    if x_response_type == "json":
+                # create dmb and non dmb df
+                logger.info(f"[{session_code}] create dmb and non dmb dfs")
+                dmb_df = pd.DataFrame(dmb_data, columns=dmb_columns)
+                non_dmb_df = pd.DataFrame(non_dmb_data, columns=non_dmb_columns)
+                
+                # Write both DataFrames to an Excel file with separate sheets
+                logger.info(f"[{session_code}] Write both dataframes to an Excel file with separate sheets")
+                excel_bytes = BytesIO()
+                with pd.ExcelWriter(excel_bytes, engine='xlsxwriter') as writer:
+                    dmb_df.to_excel(writer, sheet_name='DMB', index=False)
+                    non_dmb_df.to_excel(writer, sheet_name='NON-DMB', index=False)
 
-        _content = BaseResponse(
-            meta=BaseMeta(
-                _id=_id,
-                successful=True,
-                message=None
-            ),
-            data=query,
-            error=None
-        )
-        return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
-        
-    elif x_response_type == "csv":
-        
-        # Extract all billing dates from the query
-        billing_dates = [row.get("end_date") for row in query if row.get("end_date")]
+                # Create a streaming response for the Excel file
+                logger.info(f"[{session_code}] Create a streaming response for the Excel file")
+                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                response.headers["Content-Disposition"] = "attachment;filename=output.xlsx"
 
-        # Find the maximum billing date
-        max_billing_date = max(billing_dates) if billing_dates else None
+                # Optionally, close the BytesIO object to free up resources
+                excel_bytes.close()
 
-        # Define the TXT file name with the formatted date
-        if max_billing_date:
-            formatted_date = datetime.datetime.strptime(max_billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
-            txt_file_name = f"N-Face_Billing_Smartdet_{formatted_date}.txt"
-        else:
-            txt_file_name = "N-Face_Billing_Smartdet.txt"
+                # Return the streaming response
+                return response
 
-        max_billing_date = max(billing_dates) if billing_dates else None
+            elif bank_type_filter.lower().strip() == "dmb":
 
-        if bank_type_filter.lower().strip() == "all":
-            dmb_columns = ["Routing_Number","product_code","Billing_date","Amount"]
-            non_dmb_columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
-
-            dmb_data = []
-            non_dmb_data = []
-            for idx, row in enumerate(query):
-                #DMB DATA
-                if row.get("bank_type").lower() == "dmb":
-                    routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
-                    product_code = row.get("company",{}).get("banking_information",{}).get("product_code",None)
-                    billing_date = row.get("end_date",None)
-                    amount = float(row.get("amount",0))
+                # Define the columns
+                columns = ["Routing_Number", "product_code", "Billing_date", "Amount"]
+                
+                # Create a BytesIO object to store the text data as bytes
+                txt_data = io.BytesIO()
+                
+                # Write the header line with tab-separated column names
+                logger.info(f"[{session_code}] Write the header line with tab-separated column names")
+                txt_data.write('\t'.join(columns).encode() + b'\n')
+                
+                # Write data to the BytesIO object and collect it in a list for future reference
+                logger.info(f"[{session_code}] Write data to the BytesIO object")
+                data = []
+                for row in invoice_data:
+                    routing_number = row.get("company", {}).get("banking_information", {}).get("routing_number", None)
+                    product_code = row.get("company", {}).get("banking_information", {}).get("product_code", None)
+                    billing_date = row.get("end_date", None)
+                    amount = float(row.get("amount", 0))
 
                     # Convert the date to the desired format ("yyyymmdd")
                     formatted_billing_date = datetime.datetime.strptime(billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
-                    dmb_data.append([routing_number,product_code,formatted_billing_date,amount])
 
-                elif row.get("bank_type").lower() == "non-dmb":
-                    #NON DMMB DATA
+                    # Write the data to the BytesIO object with tab-separated values
+                    row_data = f"{routing_number}\t{product_code}\t{formatted_billing_date}\t{amount}\n".encode()
+                    txt_data.write(row_data)
+                    data.append([routing_number, product_code, formatted_billing_date, amount])
+
+                # Reset the pointer to the beginning of the BytesIO object
+                logger.info(f"[{session_code}] Reset the pointer to the beginning of the BytesIO object")
+                txt_data.seek(0)
+
+                # Create a streaming response for the TXT file
+                logger.info(f"[{session_code}] Create a streaming response for the TXT file")
+                response = StreamingResponse(iter([txt_data.getvalue()]), media_type="text/plain")
+                response.headers["Content-Disposition"] = "attachment;filename=output.txt"
+
+                # Optionally, close the BytesIO object to free up resources
+                txt_data.close()
+
+                # Return the streaming response
+                return response
+
+            elif bank_type_filter.lower().strip() == "non-dmb":
+                
+                columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
+
+                # Initialize a list to store rows
+                data = []
+
+                # Populate the data list with rows
+                logger.info(f"[{session_code}] populate the data list with rows")
+                for idx, row in enumerate(query):
                     serial_no = idx + 1
                     account_number = row.get("company", {}).get("banking_information", {}).get("billing_account_number", None)
                     sort_code = row.get("company", {}).get("banking_information", {}).get("sort_code", None)
@@ -1305,146 +1427,29 @@ def get_invoice(
                     payer_bvn = ""
                     billing_date = row.get("end_date", None)
 
-                    non_dmb_data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
-                            debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
+                    data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
+                                debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
 
 
+                # Create a DataFrame from the data and columns
+                logger.info(f"[{session_code}] Create a DataFrame from the data and columns")
+                df = pd.DataFrame(data, columns=columns)
 
-            if dmb_data and non_dmb_data:
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","data1":lists_to_list_of_dicts(dmb_columns,dmb_data),"data2":lists_to_list_of_dicts(non_dmb_columns,non_dmb_data)},"error":None}
-            elif dmb_data and not non_dmb_data:
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","data1":lists_to_list_of_dicts(dmb_columns,dmb_data),"data2":None},"error":None}
-            elif not dmb_data and dmb_data:
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"output.xlsx","sheet1":"dmb","sheet2":"non_dmb","data1":None,"data2":lists_to_list_of_dicts(non_dmb_columns,non_dmb_data)},"error":None}
-            elif not dmb_data and not dmb_data:
-                return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
+                # Convert the DataFrame to Excel format as bytes
+                logger.info(f"[{session_code}] Convert the DataFrame to Excel format as bytes")
+                excel_bytes = BytesIO()
+                df.to_excel(excel_bytes, index=False)
 
+                # Create a streaming response for the Excel file
+                logger.info(f"[{session_code}] Create a streaming response for the Excel file")
+                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                response.headers["Content-Disposition"] = f"attachment;filename=N-Face_Billing_OFI_{formatted_date}.xlsx"
 
+                # Optionally, close the BytesIO object to free up resources
+                excel_bytes.close()
 
-            # dmb_df = pd.DataFrame(dmb_data, columns=dmb_columns)
-            # non_dmb_df = pd.DataFrame(non_dmb_data, columns=non_dmb_columns)
-            # # Write both DataFrames to an Excel file with separate sheets
-            # excel_file_name = "output.xlsx"
-            # with pd.ExcelWriter(excel_file_name, engine='xlsxwriter') as writer:
-            #     dmb_df.to_excel(writer, sheet_name='DMB', index=False)
-            #     non_dmb_df.to_excel(writer, sheet_name='NON-DMB', index=False)
-
-            # # Open the file in binary mode for streaming
-            # excel_file_content_all = open(excel_file_name, "rb")
-
-            # # Create a streaming response for the Excel file
-            # response_all = StreamingResponse(iter([excel_file_content_all.read()]),
-            #                                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            # response_all.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
-
-            # # Optionally, close the file to free up resources
-            # excel_file_content_all.close()
-
-            # # Return the streaming response for "all"
-            # return response_all
-
-        elif bank_type_filter.lower().strip() == "dmb":
-
-            columns = ["Routing_Number","product_code","Billing_date","Amount"]
-            
-            txt_data = io.StringIO()
-            # txt_data.write('\t'.join(columns) + '\n')
-            data = []
-
-            for row in query:
-                routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
-                product_code = row.get("company",{}).get("banking_information",{}).get("product_code",None)
-                billing_date = row.get("end_date",None)
-                amount = float(row.get("amount",0))
-
-                # Convert the date to the desired format ("yyyymmdd")
-                formatted_billing_date = datetime.datetime.strptime(billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
-
-                # Write the data to the StringIO object with tab-separated values
-                txt_data.write(f"{routing_number}\t{product_code}\t{formatted_billing_date}\t{amount}\n")
-                data.append([routing_number,product_code,formatted_billing_date,amount])
-
-            if data and len(data) > 0 :
-                jsonschema_columns = columns
-                jsonschema_content = data
-                jsonschema_data = lists_to_list_of_dicts(jsonschema_columns,jsonschema_content)
-                return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":txt_file_name,"data":jsonschema_data},"error":None}
-            
-            return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
-
-
-            # # Reset the pointer to the beginning of the StringIO object
-            # txt_data.seek(0)
-
-            # # Create a streaming response for the TXT file
-            # response = StreamingResponse(iter([txt_data.getvalue()]), media_type="text/plain")
-            # response.headers["Content-Disposition"] = f"attachment;filename={txt_file_name}"
-
-            # # Optionally, close the StringIO object to free up resources
-            # txt_data.close()
-
-            # # Return the streaming response
-            # return response
-
-        elif bank_type_filter.lower().strip() == "non-dmb":
-            
-            columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
-
-            # Initialize a list to store rows
-            data = []
-
-            # Populate the data list with rows
-            for idx, row in enumerate(query):
-                serial_no = idx + 1
-                account_number = row.get("company", {}).get("banking_information", {}).get("billing_account_number", None)
-                sort_code = row.get("company", {}).get("banking_information", {}).get("sort_code", None)
-                payee_beneficiary = row.get("company", {}).get("banking_information", {}).get("payee_beneficiary", None)
-                amount = float(row.get("amount", 0))
-                narration = "N-Face Billing"
-                payer = "NIBSS PLC"
-                debit_sort_code = ""
-                merchant_id = ""
-                crdr = "DR"
-                currency = "NGN"
-                cust_code = ""
-                beneficiary_bvn = ""
-                payer_bvn = ""
-                billing_date = row.get("end_date", None)
-
-                data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
-                            debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
-
-
-            # if data and len(data) > 0 :
-            #     jsonschema_columns = columns
-            #     jsonschema_content = data
-            #     jsonschema_data = lists_to_list_of_dicts(jsonschema_columns,jsonschema_content)
-
-            #     return {"meta":{"_id":_id,"successful":True,"message":None},"data":{"file_name":f"N-Face_Billing_OFI_{formatted_date}.xlsx","data":jsonschema_data},"error":None}
-            
-            # return {"meta":{"_id":_id,"successful":False,"message":None},"data":None,"error":None}
-
-            # Create a DataFrame from the data and columns
-            df = pd.DataFrame(data, columns=columns)
-
-            # Specify the Excel file name
-            excel_file_name = f"N-Face_Billing_OFI_{formatted_date}.xlsx"
-
-            # Write the DataFrame to an Excel file
-            df.to_excel(excel_file_name, index=False)
-
-            # Open the file in binary mode for streaming
-            excel_file_content = open(excel_file_name, "rb")
-
-            # Create a streaming response for the Excel file
-            response = StreamingResponse(iter([excel_file_content.read()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
-
-            # Optionally, close the file to free up resources
-            excel_file_content.close()
-
-            # Return the streaming response
-            return response
+                # Return the streaming response
+                return response
             
 
 # Invoice
@@ -1458,66 +1463,77 @@ def get_invoice_stats(
     request:Request
 ):
     
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) or (company_id != "all" and role_id != PortalRole.SUPER_ADMIN.value ):
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
+        # create session with db
+        logger.info(f"[{session_code}] create db connection")
+        with database_client.Session() as session:
+
+            # create query
+            logger.info(f"[{session_code}] create query")
+            query = session.query(
+                Invoice.payment_status,
+                func.count(Invoice.payment_status).label('count'),
+                func.sum(Invoice.amount).label('total_amount')
+            )
 
 
-        # Perform the query using SQLAlchemy
-        query = session.query(
-            Invoice.payment_status,
-            func.count(Invoice.payment_status).label('count'),
-            func.sum(Invoice.amount).label('total_amount')
-        )
-
-
-        if role_id == PortalRole.SUPER_ADMIN.value:
             if company_id != "all":
+                # add company filter to query
+                logger.info(f"[{session_code}] add company filter to query")
                 query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
 
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
-            if company_id != decoded_token.get("cid") or company_id == "all":
-                _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=_successful,
-                        message=_message
-                    ),
-                    data=None,
-                    error=_error
-                )
-                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-            
-            query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
 
+            # add datetime filter to query
+            logger.info(f"[{session_code}] add datetime filter to query")
+            query = query.filter(NFaceLogs.create_date >= start_datetime,
+                                    NFaceLogs.create_date <= end_datetime)
 
-        query = query.filter(NFaceLogs.create_date >= start_datetime,
-                                NFaceLogs.create_date <= end_datetime)
+            # add groupby payment_status to query
+            logger.info(f"[{session_code}] add groupby payment_status to query")
+            query = query.group_by(Invoice.payment_status)
 
-        query = query.group_by(Invoice.payment_status)
+            # query db
+            logger.info(f"[{session_code}] query db")
+            stats_data = query.all()
 
-        query = query.all()
-        if query:
-            nested_dict = {}
-            for _status, _count, _amount in query:
-                _status_name = "PAID" if _status == 1 else "PENDING"
-                nested_dict[_status_name] = {}
-                nested_dict[_status_name]["total_count"] = _count
-                nested_dict[_status_name]["total_amount"] = _amount
+            # reformat data
+            if stats_data:
+                logger.info(f"[{session_code}] reformat data")
+                nested_dict = {}
+                for _status, _count, _amount in stats_data:
+                    _status_name = "PAID" if _status == 1 else "PENDING"
+                    nested_dict[_status_name] = {}
+                    nested_dict[_status_name]["total_count"] = _count
+                    nested_dict[_status_name]["total_amount"] = _amount
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=True,
-            message=None
-        ),
-        data=nested_dict,
-        error=None
-    )
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
+    # create response data
+    logger.info(f"[{session_code}] create response data")
+    _response = BaseResponse
+    _meta = BaseMeta(_id=_id, successful=True, message=None)
+    _data = nested_dict
+    _error = None
+    _status_code = status.HTTP_200_OK
 
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+        
 
 ####################
 ## Control Center ##
@@ -1531,63 +1547,60 @@ def bank_type(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        non_verbose_data = (BankTypeMaster.public_id, BankTypeMaster.bank_type,)
-        data_to_query = (BankTypeMaster,) if x_verbose else non_verbose_data
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
-        bank_type_data = session.query(
-            *data_to_query
-        )
+            # create query
+            logger.info(f"[{session_code}] create query")
+            non_verbose_data = (BankTypeMaster.public_id, BankTypeMaster.bank_type,)
+            data_to_query = (BankTypeMaster,) if x_verbose else non_verbose_data
 
-        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
-            ...
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
+            bank_type_data = session.query(
+                *data_to_query
             )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-        
 
-        if bank_type_data:
+            # query db
+            logger.info(f"[{session_code}] query db")
             bank_type_data = bank_type_data.all()
-            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-            bank_type_data = dictify(bank_type_data, x_verbose)
 
-            if x_verbose:
-                exclude_data_keys = ("bank_type_id",)
-                for i in range(len(bank_type_data)):
-                    remove_keys_from_dict(bank_type_data[i],exclude_data_keys)
+            if bank_type_data:
+                # format data
+                logger.info(f"[{session_code}] format retreived bank type data")
+                bank_type_data = [  BankType_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in bank_type_data  ]
+        
+            # create response data
+            logger.info(f"[{session_code}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = bank_type_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-            _successful, _message, _data, _error, _status_code = True, None, bank_type_data, None, status.HTTP_200_OK
-        else:
-            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-
-    
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
-
+    
 @api.get("/billing_frequency")
 def billing_frequency(
     *,
@@ -1596,61 +1609,61 @@ def billing_frequency(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        non_verbose_data = (BillingFrequencyMaster.public_id, BillingFrequencyMaster.billing_frequency,)
-        data_to_query = (BillingFrequencyMaster,) if x_verbose else non_verbose_data
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
-        billing_frequency_data = session.query(
-            *data_to_query
-        )
+            # create query
+            logger.info(f"[{session_code}] create query")
+            non_verbose_data = (BillingFrequencyMaster.public_id, BillingFrequencyMaster.billing_frequency,)
+            data_to_query = (BillingFrequencyMaster,) if x_verbose else non_verbose_data
 
-        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
-            ...
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
+            billing_frequency_data = session.query(
+                *data_to_query
             )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-        
 
-        if billing_frequency_data:
+            # query db
+            logger.info(f"[{session_code}] query db")
             billing_frequency_data = billing_frequency_data.all()
-            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-            billing_frequency_data = dictify(billing_frequency_data, x_verbose)
 
-            if x_verbose:
-                exclude_data_keys = ("billing_frequency_id",)
-                for i in range(len(billing_frequency_data)):
-                    remove_keys_from_dict(billing_frequency_data[i],exclude_data_keys)
-
-            _successful, _message, _data, _error, _status_code = True, None, billing_frequency_data, None, status.HTTP_200_OK
-        else:
-            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
+            if billing_frequency_data:
+                # format data
+                logger.info(f"[{session_code}] format billing_frequency_data data")
+                billing_frequency_data = [  BillingFrequency_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in billing_frequency_data  ]
+    
+            # create response data
+            logger.info(f"[{session_code}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = billing_frequency_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
     
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 
 @api.get("/billing_mode_type")
 def billing_mode_type(
@@ -1660,62 +1673,60 @@ def billing_mode_type(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        non_verbose_data = (BillingModeTypeMaster.public_id, BillingModeTypeMaster.billing_mode_type,)
-        data_to_query = (BillingModeTypeMaster,) if x_verbose else non_verbose_data
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
-        billing_mode_data = session.query(
-            *data_to_query
-        )
+            # create query
+            logger.info(f"[{session_code}] create query")
+            non_verbose_data = (BillingModeTypeMaster.public_id, BillingModeTypeMaster.billing_mode_type,)
+            data_to_query = (BillingModeTypeMaster,) if x_verbose else non_verbose_data
 
-        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
-            ...
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
+            billing_mode_data = session.query(
+                *data_to_query
             )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-        
 
-        if billing_mode_data:
+            # query db
+            logger.info(f"[{session_code}] query db")
             billing_mode_data = billing_mode_data.all()
-            dictify = lambda data,is_verbose : [i.to_dict() for i in data] if is_verbose else [i._asdict() for i in data]
-            billing_mode_data = dictify(billing_mode_data, x_verbose)
 
-            if x_verbose:
-                exclude_data_keys = ("billing_frequency_id",)
-                for i in range(len(billing_mode_data)):
-                    remove_keys_from_dict(billing_mode_data[i],exclude_data_keys)
-
-            _successful, _message, _data, _error, _status_code = True, None, billing_mode_data, None, status.HTTP_200_OK
-        else:
-            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-
+            if billing_mode_data:
+                # format data
+                logger.info(f"[{session_code}] format billing_mode_data type data")
+                billing_mode_data = [  BillingMode_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in billing_mode_data  ]
+        
+            # create response data
+            logger.info(f"[{session_code}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = billing_mode_data
+            _error = None
+            _status_code = status.HTTP_200_OK
     
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
+    
 
 # CRUD Company
 
@@ -1731,76 +1742,71 @@ def get_all_companies(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
-
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        non_verbose_data = (Company.public_id, Company.company_name,)
-        data_to_query = (Company,) if x_verbose else non_verbose_data
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
-        company_data = session.query(
-            *data_to_query
-        )
-        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
-            ...
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
+
+            # create query
+            logger.info(f"[{session_code}] create query")
+            non_verbose_data = (Company.public_id, Company.company_name,)
+            data_to_query = (Company,) if x_verbose else non_verbose_data
+
+            company_data = session.query(
+                *data_to_query
             )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-        
 
-        total_count = company_data.with_entities(func.count()).scalar()
-        
-        # Pagination
-        if not x_ignore_pagination:
-            offset = (page_no - 1) * items_per_page
-            company_data = company_data.order_by(Company.create_date).offset(offset).limit(items_per_page)
+            # calculate total companies
+            logger.info(f"[{session_code}] calculate total companies")
+            total_count = company_data.with_entities(func.count()).scalar()
+            
+            # Pagination
+            if not x_ignore_pagination:
+                logger.info(f"[{session_code}] add pagination to query")
+                offset = (page_no - 1) * items_per_page
+                company_data = company_data.order_by(Company.create_date).offset(offset).limit(items_per_page)
 
-        if company_data:
+            # query db
+            logger.info(f"[{session_code}] query db")
             company_data = company_data.all()
-            dictify = lambda data,is_verbose : [Company_MF.model_validate(i).model_dump() for i in data] if is_verbose else [i._asdict() for i in data]
-            company_data = dictify(company_data, x_verbose)
+            if company_data:
+                # format data
+                logger.info(f"[{session_code}] format data")
+                company_data = [Company_MF.model_validate(i).model_dump() for i in company_data] if x_verbose else [i._asdict() for i in company_data]
 
-            # if x_verbose:
-                # exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
-                # for i in range(len(company_data)):
-                #     remove_keys_from_dict(company_data[i],exclude_data_keys)
-                # for idx, _ in enumerate(company_data):
+            # create response data
+            logger.info(f"[{session_code}] create response data")
+            _response = PaginationResponse
+            _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
+            _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
+            _data = company_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-                #     if company_data[idx].get("billing_information",{}).get("volume_tariff"):
-                #         company_data[idx]["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["volume_tariff"] ] 
-                #     if company_data[idx].get("billing_information",{}).get("institution",{}) and company_data[idx].get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-                #         company_data[idx]["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["institution"]["volume_tariff"] ] 
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
     
-    _content = PaginationResponse(
-        meta=PaginationMeta(
-            _id=_id,
-            successful=True,
-            message=None,
-            pagination_data=PaginationData(
-                items_per_page=items_per_page,
-                page_no=page_no,
-                total_count=total_count,
-                page_url=request.url._url
-            )
-        ),
-        data=company_data,
-        error=None
-    )
-
-    return ORJSONResponse(status_code=status.HTTP_200_OK, content=_content.model_dump())
-
 @api.get("/company/{company_id}")
 def get_company(
     *,
@@ -1810,70 +1816,71 @@ def get_company(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
-
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        non_verbose_data = (Company.public_id, Company.company_name,)
-        data_to_query = (Company,) if x_verbose else non_verbose_data
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
-        company_data = session.query(
-            *data_to_query
-        ).filter(
-            Company.public_id==company_id
-        )
-        if role_id == PortalRole.SUPER_ADMIN.value: # SUPER ADMIN
-            ...
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
+            # create query
+            logger.info(f"[{session_code}] create query")
+            non_verbose_data = (Company.public_id, Company.company_name,)
+            data_to_query = (Company,) if x_verbose else non_verbose_data
+
+            company_data = session.query(
+                *data_to_query
+            ).filter(
+                Company.public_id==company_id
             )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-        
 
-        if company_data:
+            # query db
+            logger.info(f"[{session_code}] query db")
             company_data = company_data.all()
-            dictify = lambda data,is_verbose : [Company_MF.model_validate(i).model_dump() for i in data] if is_verbose else [i._asdict() for i in data]
-            company_data = dictify(company_data, x_verbose)
+            if company_data:
+                # format data
+                logger.info(f"[{session_code}] format data")
+                company_data = [Company_MF.model_validate(i).model_dump() for i in company_data] if x_verbose else [i._asdict() for i in company_data]
 
-            # if x_verbose:
-            #     # exclude_data_keys = ("company_id", "company.billing_id","company.billing_information.billing_frequency_id","company.billing_information.billing_id","company.billing_information.currency_id","company.billing_information.currency.currency_id","company.billing_information.billing_frequency.billing_frequency_id","company.banking_info.company_id","company.banking_info.bank_type_id","company.banking_info.bank_type.bank_type_id")
-            #     # for i in range(len(company_data)):
-            #     #     remove_keys_from_dict(company_data[i],exclude_data_keys)
-            #     for idx, _ in enumerate(company_data):
+                # create response data
+                logger.info(f"[{session_code}] create response data")
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message=None)
+                _data = company_data
+                _error = None
+                _status_code = status.HTTP_200_OK
 
-            #         if company_data[idx].get("billing_information",{}).get("volume_tariff"):
-            #             company_data[idx]["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["volume_tariff"] ] 
-            #         if company_data[idx].get("billing_information",{}).get("institution",{}) and company_data[idx].get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-            #             company_data[idx]["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data[idx]["billing_information"]["institution"]["volume_tariff"] ] 
+            else:
+                # create company not found response data
+                logger.info(f"[{session_code}] create company not found response data")
+                _response_message = "company not found"
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+                _data = None
+                _error = BaseError(error_message=_response_message)
+                _status_code = status.HTTP_404_NOT_FOUND
     
-            _successful, _message, _data, _error, _status_code = True, None, company_data, None, status.HTTP_200_OK
-        else:
-            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-
-    
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
+    
 # Onboard Client
 @api.post("/register_client")
 def onboard_client(
@@ -1882,14 +1889,31 @@ def onboard_client(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
-
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
+            # create company obj
+            logger.info(f"[{session_code}] create company obj")
             company_data = Company(
                 company_name=req_body.company_name,
                 is_active=True,
@@ -1897,45 +1921,56 @@ def onboard_client(
                 auto_disable_days=req_body.auto_disable_days,
             )
 
+            # add company to db
+            logger.info(f"[{session_code}] add company to db")
             session.add(company_data)
 
+
             try:
+                # flush data
+                logger.info(f"[{session_code}] flush data")
                 session.flush()
             except sqlalchemy.exc.IntegrityError as e:
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=False,
-                        message="company/client_id exists"
-                    ),
-                    data=None,
-                    error=BaseError(
-                        error_message="company/client_id  exists"
-                    )
-                )
-                return ORJSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=_content.model_dump())
+                # create company/client_id exists response data
+                logger.info(f"[{session_code}] create company/client_id exists response data")
+                _response_message = "company/client_id exists"
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+                _data = None
+                _error = BaseError(error_message=_response_message)
+                _status_code = status.HTTP_400_BAD_REQUEST
     
-        
+                # create response
+                logger.info(f"[{session_code}] create response")
+                _content = _response(meta=_meta, data=_data, error=_error)
+                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
+            # load billing data
+            logger.info(f"[{session_code}] load billing data")
             billing_frequency_data = session.query(
                 BillingFrequencyMaster
             ).filter(
                 BillingFrequencyMaster.public_id==req_body.billing_frequency_id
             ).first()
 
+            # load billing mode data
+            logger.info(f"[{session_code}] load billing mode data")
             billing_mode_type_data = session.query(
                 BillingModeTypeMaster
             ).filter(
                 BillingModeTypeMaster.public_id==req_body.billing_mode_type_id
             ).first()
 
+            # load institution data
+            logger.info(f"[{session_code}] load institution data")
             institution_data = session.query(
                 Institution
             ).filter(
                 Institution.public_id==req_body.institution_id
             ).first()
 
-
+            # create billing info obj
+            logger.info(f"[{session_code}] create billing info obj")
             billing_data = BillingInformation(
                 email_id1=req_body.email_id,
                 floor_cost=req_body.floor_cost,
@@ -1949,22 +1984,32 @@ def onboard_client(
                 company_id=company_data.company_id
             )
 
+            # ad billing info data to db
+            logger.info(f"[{session_code}] add billing info data to db")
             session.add(billing_data)
 
             if billing_mode_type_data.billing_mode_type == "PREPAID":
+                # create wallet obj
+                logger.info(f"[{session_code}] create wallet obj")
                 wallet_data = Wallet(
                     company_id = company_data.company_id,
                     amount = 0.0,
                     ledger_amount = 0.0,
                 )
+                # add wallet obj to db
+                logger.info(f"[{session_code}] add wallet obj to db")
                 session.add(wallet_data)
 
+            # load bank tyoe data from db
+            logger.info(f"[{session_code}] load bank tyoe data from db")
             bank_type_data = session.query(
                 BankTypeMaster
             ).filter(
                 BankTypeMaster.public_id==req_body.bank_type_id
             ).first()
 
+            # create company banking info obj
+            logger.info(f"[{session_code}] create company banking info obj")
             company_banking_data = CompanyBankingInfo(
                 company_id = company_data.company_id,
                 bank_type_id = bank_type_data.bank_type_id,
@@ -1978,11 +2023,18 @@ def onboard_client(
                 billing_account_name= req_body.billing_account_name,
             )
 
+            # add comany banking info to db
+            logger.info(f"[{session_code}] add comany banking info to db")
             session.add(company_banking_data)
             
+            # flush data
+            logger.info(f"[{session_code}] flush data")
             session.flush()
 
+
             if req_body.volume_tariff:
+                # add volume tarrif data
+                logger.info(f"[{session_code}] add volume tarrif data")
                 for vt in req_body.volume_tariff:
                     volume_tariff_data = VolumeTariff(
                         institution_id=None,
@@ -1993,51 +2045,27 @@ def onboard_client(
                     )
                     session.add(volume_tariff_data)
 
-            _successful, _message, _error, _status_code = True, "created client", None, status.HTTP_200_OK
+            # commit data
+            logger.info(f"[{session_code}] commit data")
+            session.commit()
 
-            
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
-            )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-    
-        session.commit()
-
-        if company_data:
-            company_data = Company_MF.model_validate(company_data).model_dump()  
-                    
-            # if company_data.get("billing_information",{}).get("volume_tariff"):
-            #     company_data["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
-            # if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-            #     company_data["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
-
-
-        _data = company_data # company_data.to_dict()
-    
-        exclude_data_keys = ("company_id", "billing_id","billing_information.billing_frequency_id","billing_information.billing_id","billing_information.currency_id","billing_information.currency.currency_id","billing_information.billing_frequency.billing_frequency_id","banking_info.company_id","banking_info.bank_type_id","banking_info.bank_type.bank_type_id")
-        remove_keys_from_dict(_data,exclude_data_keys)
-
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+            if company_data:
+                # format data
+                logger.info(f"[{session_code}] format data")
+                company_data = Company_MF.model_validate(company_data).model_dump()  
+                        
+        # create response data
+        logger.info(f"[{session_code}] create response data")
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=True, message=None)
+        _data = company_data
+        _error = None
+        _status_code = status.HTTP_200_OK
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
+    
 
 # # Update Company /company /company/billing /company/banking
 @api.put("/company/{company_id}")
@@ -2048,74 +2076,81 @@ def update_company(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
-
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
+
+            # query company
+            logger.info(f"[{session_code}] query company")
             company_data = session.query(Company).filter(Company.public_id == company_id).first()
+
+            # update company
+            logger.info(f"[{session_code}] update company")
             company_data.company_name = req_body.company_name
             company_data.client_id = req_body.client_id
             company_data.is_active = req_body.is_active
             company_data.auto_disable_days = req_body.auto_disable_days
 
             try:
+                # flush data
+                logger.info(f"[{session_code}] flush data")
                 session.flush()
             except sqlalchemy.exc.IntegrityError as e:
-                _content = BaseResponse(
-                    meta=BaseMeta(
-                        _id=_id,
-                        successful=False,
-                        message="company/client_id exists"
-                    ),
-                    data=None,
-                    error=BaseError(
-                        error_message="company/client_id  exists"
-                    )
-                )
-                return ORJSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=_content.model_dump())
+                # create company/client_id exists response data
+                logger.info(f"[{session_code}] create company/client_id exists response data")
+                _response_message = "company/client_id exists"
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+                _data = None
+                _error = BaseError(error_message=_response_message)
+                _status_code = status.HTTP_400_BAD_REQUEST
     
-            _successful, _message, _data, _error, _status_code = True, "updated", company_data, None, status.HTTP_200_OK
+                # create response
+                logger.info(f"[{session_code}] create response")
+                _content = _response(meta=_meta, data=_data, error=_error)
+                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
-            )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-    
-        session.commit()
-    
-        if company_data:
-            company_data = Company_MF.model_validate(company_data).model_dump()  
-                    
-            # if company_data.get("billing_information",{}).get("volume_tariff"):
-            #     company_data["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
-            # if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-            #     company_data["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
 
+            # commit data
+            logger.info(f"[{session_code}] commit data")
+            session.commit()
+        
+            if company_data:
+                # format data
+                logger.info(f"[{session_code}] format data")
+                company_data = Company_MF.model_validate(company_data).model_dump()  
+
+        # create response data
+        logger.info(f"[{session_code}] create response data")
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=True, message=None)
         _data = company_data
-
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+        _error = None
+        _status_code = status.HTTP_200_OK
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    
 
 
 @api.put("/company/{company_id}/billing")
@@ -2126,15 +2161,32 @@ def update_company_billing(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
-
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
-            # company_data = session.query(Company).filter(Company.public_id == company_id).first()
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
+
+            # query company and billing data
+            logger.info(f"[{session_code}] query company and billing data")
             company_data, billing_data = session.query(
                 Company,
                 BillingInformation
@@ -2145,10 +2197,20 @@ def update_company_billing(
                 Company.public_id==company_id
             ).first()
 
+
+            # query billing frequency data
+            logger.info(f"[{session_code}] query billing frequency data")
             billing_frequency_data = session.query(BillingFrequencyMaster).filter(BillingFrequencyMaster.public_id == req_body.billing_frequency_id).first()
+            # query billing mode data
+            logger.info(f"[{session_code}] query billing mode data")
             billing_mode_type_data = session.query(BillingModeTypeMaster).filter(BillingModeTypeMaster.public_id==req_body.billing_mode_type_id).first()
+            # query institution data
+            logger.info(f"[{session_code}] query institution data")
             institution_data = session.query(Institution).filter(Institution.public_id==req_body.institution_id).first()
 
+
+            # update data
+            logger.info(f"[{session_code}] update data")
             billing_data.email_id1=req_body.email_id1
             billing_data.floor_cost=req_body.floor_cost
             billing_data.vat=req_body.vat 
@@ -2159,6 +2221,9 @@ def update_company_billing(
             billing_data.billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
             billing_data.institution_id=institution_data.institution_id if institution_data else None
 
+
+            # update volume tarrif
+            logger.info(f"[{session_code}] update volume tarrif")
             volume_tariff_data = session.query(
                 VolumeTariff
             ).filter(
@@ -2180,45 +2245,35 @@ def update_company_billing(
                     )
                     session.add(volume_tariff_data)
 
-            _successful, _message, _data, _error, _status_code = True, "updated", company_data, None, status.HTTP_200_OK
 
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
-            )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
+            # flush data
+            logger.info(f"[{session_code}] flush data")
+            session.flush()
 
-        session.flush()
-        session.commit()
+            # commit data
+            logger.info(f"[{session_code}] commit data")
+            session.commit()
 
-        # company_data = session.query(Company).filter(Company.public_id == company_id).first()
 
-        if company_data:
-            company_data = Company_MF.model_validate(company_data).model_dump()  
-                    
+            if company_data:
 
-        _data = company_data
+                # format company data
+                logger.info(f"[{session_code}] format company data")
+                company_data = Company_MF.model_validate(company_data).model_dump()  
+                        
+            # create response data
+            logger.info(f"[{session_code}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = company_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
+    
 
 @api.put("/company/{company_id}/banking")
 def update_company_banking(
@@ -2229,15 +2284,32 @@ def update_company_banking(
     request:Request,
 ):
 
+    # create request id
     _id = request.state.session_code
-
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
-            # company_data = session.query(Company).filter(Company.public_id == company_id).first()
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
 
+
+            # query company and banking data
+            logger.info(f"[{session_code}] query company and banking data")
             company_data, banking_data = session.query(
                 Company,
                 CompanyBankingInfo
@@ -2248,8 +2320,14 @@ def update_company_banking(
                 Company.public_id==company_id
             ).first()
 
+
+            # query bank type data
+            logger.info(f"[{session_code}] query bank type data")
             bank_type_data = session.query(BankTypeMaster).filter(BankTypeMaster.public_id == req_body.bank_type_id).first()
 
+
+            # update banking data
+            logger.info(f"[{session_code}] update banking data")
             banking_data.bank_type_id=bank_type_data.bank_type_id
             banking_data.routing_number=req_body.routing_number
             banking_data.product_code=req_body.product_code
@@ -2262,47 +2340,29 @@ def update_company_banking(
             banking_data.billing_account_name=req_body.billing_account_name
 
 
-            _successful, _message, _data, _error, _status_code = True, "updated", company_data, None, status.HTTP_200_OK
+            # commit data
+            logger.info(f"[{session_code}] commit data")
+            session.commit()
+        
+            if company_data:
+                # format company data
+                logger.info(f"[{session_code}] format company data")
+                company_data = Company_MF.model_validate(company_data).model_dump()  
+                        
 
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
-            )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-    
-        session.commit()
-    
-        if company_data:
-            company_data = Company_MF.model_validate(company_data).model_dump()  
-                    
-            # if company_data.get("billing_information",{}).get("volume_tariff"):
-            #     company_data["billing_information"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["volume_tariff"] ] 
-            # if company_data.get("billing_information",{}).get("institution",{}) and company_data.get("billing_information",{}).get("institution",{}).get("volume_tariff") :
-            #     company_data["billing_information"]["institution"]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in company_data["billing_information"]["institution"]["volume_tariff"] ] 
+            # create response data
+            logger.info(f"[{session_code}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = company_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-
-        _data = company_data
-
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
+    
 # Delete Company
 @api.delete("/company/{company_id}")
 def delete_company(
@@ -2312,60 +2372,80 @@ def delete_company(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-        if role_id == PortalRole.SUPER_ADMIN.value:
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
+
+            # create query
+            logger.info(f"[{session_code}] create query")
             company_data = session.query(
                 Company
             ).filter(
                 Company.public_id == company_id
             )
+            # query db
+            logger.info(f"[{session_code}] query db")
+            company_data = company_data.first()
 
-        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+            if not company_data:
+                # create company not found response data
+                logger.info(f"[{session_code}] create company not found response data")
+                _response_message = "company not found"
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+                _data = None
+                _error = BaseError(error_message=_response_message)
+                _status_code = status.HTTP_404_NOT_FOUND
+            else:
+                # query company banking data
+                logger.info(f"[{session_code}] query company banking data")
+                company_banking_data = session.query(CompanyBankingInfo).filter(CompanyBankingInfo.company_id == company_data.company_id).first()
+                if company_banking_data:
+                    # delete company banking data
+                    logger.info(f"[{session_code}] delete company banking data")
+                    session.delete(company_banking_data)
 
-            _successful, _message, _error, _status_code = False, "unathorized", BaseError(error_message="unathorized"), status.HTTP_401_UNAUTHORIZED
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=_successful,
-                    message=_message
-                ),
-                data=None,
-                error=_error
-            )
-
-            return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-
-        company_data = company_data.first()
-
-        if not company_data:
-            _successful, _message, _error, _status_code = False, "user not found", BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-        else:
-            
-            company_banking_data = session.query(CompanyBankingInfo).filter(CompanyBankingInfo.company_id == company_data.company_id).first()
-            if company_banking_data:
-                session.delete(company_banking_data)
-
-            session.delete(company_data)
-            session.commit()
-            _successful, _message, _error, _status_code = True, "deleted", None, status.HTTP_200_OK
+                # delete company
+                logger.info(f"[{session_code}] delete company")
+                session.delete(company_data)
+                # commit data
+                logger.info(f"[{session_code}] commit data")
+                session.commit()
 
 
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=None,
-        error=_error
-    )
-
+                # create response data
+                logger.info(f"[{session_code}] create response data")
+                _response_message = "deleted"
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message=_response_message)
+                _data = None
+                _error = None
+                _status_code = status.HTTP_200_OK
+    
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
 
 # Wallet
 @api.get("/company/{company_id}/wallet")
@@ -2376,58 +2456,68 @@ def wallet(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if not (role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value): # SUPER ADMIN
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
-
-        wallet_data = session.query(
-            Wallet
-        ).join(
-            Company,
-            Wallet.company_id == Company.company_id
-        ).filter(
-            Company.public_id==company_id
-        ).first()
-
-
-        if role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value: # SUPER ADMIN
-            ...
-        else: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
-            )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-        
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
+            
+            # query wallet
+            logger.info(f"[{session_code}] query wallet")
+            wallet_data = session.query(
+                Wallet
+            ).join(
+                Company,
+                Wallet.company_id == Company.company_id
+            ).filter(
+                Company.public_id==company_id
+            ).first()
 
         if wallet_data:
+            # format wallet data
+            logger.info(f"[{session_code}] format wallet data")
             wallet_data = wallet_data.to_dict()
 
-            _successful, _message, _data, _error, _status_code = True, None, wallet_data, None, status.HTTP_200_OK
+            # create response data
+            logger.info(f"[{session_code}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = wallet_data
+            _error = None
+            _status_code = status.HTTP_200_OK
+
         else:
-            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
+            # create wallet not found response data
+            logger.info(f"[{session_code}] create wallet not found response data")
+            _response_message = "wallet not found"
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+            _data = None
+            _error = BaseError(error_message=_response_message)
+            _status_code = status.HTTP_404_NOT_FOUND
 
-    
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
 
 @api.post("/company/{company_id}/wallet/load_wallet")
 async def load_wallet(
@@ -2438,62 +2528,72 @@ async def load_wallet(
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request,
 ):
+    # create request id
     _id = request.state.session_code
+    # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
-
+    # get amount from body
+    logger.info(f"[{session_code}]  get amount from body")
     amount = (await request.json()).get('amount')
-    
 
-    with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+    if role_id == PortalRole.EXPLORER.value: # SUPER ADMIN
+        # create unathorized response data
+        logger.info(f"[{session_code}] create unathorized response data")
+        _response_message = "unauthorized"
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+        _data = None
+        _error = BaseError(error_message=_response_message)
+        _status_code = status.HTTP_403_FORBIDDEN
+    else:
 
+        # check if user has permission to use this endpoint
+        logger.info(f"[{session_code}] check if user has permission to use this endpoint")
+        with database_client.Session() as session:
+            
+            # query wallet data
+            logger.info(f"[{session_code}] query wallet data")
+            wallet_data = session.query(
+                Wallet
+            ).join(
+                Company,
+                Wallet.company_id == Company.company_id
+            ).filter(
+                Company.public_id==company_id
+            ).first()
 
-        wallet_data = session.query(
-            Wallet
-        ).join(
-            Company,
-            Wallet.company_id == Company.company_id
-        ).filter(
-            Company.public_id==company_id
-        ).first()
+            if wallet_data:
+                # updte wallet
+                logger.info(f"[{session_code}] updte wallet")
+                wallet_data.amount += amount
+                wallet_data.ledger_amount += amount
+                session.flush()
+                session.commit()
 
+                # create response data
+                logger.info(f"[{session_code}] create response data")
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message=None)
+                _data = wallet_data.to_dict()
+                _error = None
+                _status_code = status.HTTP_200_OK
 
-        if role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.ADMIN.value: # SUPER ADMIN
-            ...
-        elif role_id == PortalRole.EXPLORER.value: 
-            _content = BaseResponse(
-                meta=BaseMeta(
-                    _id=_id,
-                    successful=False,
-                    message="unauthorized"
-                ),
-                data=None,
-                error=BaseError(
-                    error_message="unauthorized"
-                )
-            )
-            return ORJSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_content.model_dump())
-        
+            else:
+                # create wallet not found response data
+                logger.info(f"[{session_code}] create wallet not found response data")
+                _response_message = "wallet not found"
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+                _data = None
+                _error = BaseError(error_message=_response_message)
+                _status_code = status.HTTP_404_NOT_FOUND
 
-        if wallet_data:
-            wallet_data.amount += amount
-            wallet_data.ledger_amount += amount
-            session.flush()
-            session.commit()
-            _successful, _message, _data, _error, _status_code = True, None, wallet_data.to_dict(), None, status.HTTP_200_OK
-        else:
-            _successful, _message, _data, _error, _status_code = False, None, None, BaseError(error_message="user not found"), status.HTTP_404_NOT_FOUND
-
-    
-    _content = BaseResponse(
-        meta=BaseMeta(
-            _id=_id,
-            successful=_successful,
-            message=_message
-        ),
-        data=_data,
-        error=_error
-    )
-
+    # create response
+    logger.info(f"[{session_code}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
 
@@ -2513,17 +2613,19 @@ def institutions(
     # create request id
     _id = request.state.session_code
     # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
-
-    # check if non super admin + company_id == all or company_id != cid
-    # if not (role_id != PortalRole.SUPER_ADMIN.value and (company_id != decoded_token.get("cid"))) and role_id in (_.value for _ in PortalRole)  :
+    # check if user has permission to use this api
+    logger.info(f"[{session_code}] check if user has permission to use this api")
     if role_id == PortalRole.SUPER_ADMIN.value:
 
         # create session with db
+        logger.info(f"[{session_code}] create session with db")
         with database_client.Session() as session:
 
             # setup non verbose data
+            logger.info(f"[{session_code}] create query")
             non_verbose_data = (Institution.public_id.label("institution_id"), Institution.institution_name)
             data_to_query = (Institution,) if x_verbose else non_verbose_data
 
@@ -2532,27 +2634,26 @@ def institutions(
 
             
             # get total count for pagination
+            logger.info(f"[{session_code}] get total count for pagination")
             total_count = session.query(func.count()).select_from(Institution).scalar()
 
             # pagination
             if not x_ignore_pagination:
+                logger.info(f"[{session_code}] add pagination to query")
                 offset = (page_no - 1) * items_per_page
                 query = query.order_by(Institution.create_date).offset(offset).limit(items_per_page)
 
             # get all data
+            logger.info(f"[{session_code}] query db")
             institution_data = query.all()
 
             if institution_data:
                 # format data
+                logger.info(f"[{session_code}] format data")
                 institution_data = [  Institution_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in institution_data  ]
-                
-                # if x_verbose:
-                #     for idx, _ in enumerate(institution_data):
-                #         institution_data[idx]["volume_tariff"] = [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data[idx]["volume_tariff"]] if institution_data[idx]["volume_tariff"] else None
 
-
-                # institution_data = [  i.to_dict() if x_verbose else i._asdict() for i in institution_data  ]
-
+        # create response data
+        logger.info(f"[{session_code}] create response data")
         _response = PaginationResponse
         _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
         _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
@@ -2561,14 +2662,17 @@ def institutions(
         _status_code = status.HTTP_200_OK
 
     else:
-
+        # create unauthorized response data
+        logger.info(f"[{session_code}] create unauthorized response data")
+        _response_message = "unauthorized"
         _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
-        _error = BaseError(error_message="unauthorized")
+        _error = BaseError(error_message=_response_message)
         _status_code = status.HTTP_403_FORBIDDEN
 
-    
+    # create response
+    logger.info(f"[{session_code}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
     
@@ -2583,48 +2687,60 @@ def institution(
     # create request id
     _id = request.state.session_code
     # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
 
-    # check if non super admin + company_id == all or company_id != cid
-    # if not (role_id != PortalRole.SUPER_ADMIN.value and (company_id != decoded_token.get("cid"))) and role_id in (_.value for _ in PortalRole)  :
+    # check if user has permission to use this api
+    logger.info(f"[{session_code}] check if user has permission to use this api")
     if role_id == PortalRole.SUPER_ADMIN.value:
 
         # create session with db
+        logger.info(f"[{session_code}] create session with db")
         with database_client.Session() as session:
 
 
             # basic query
+            logger.info(f"[{session_code}] create query")
             query = session.query( Institution ).options(joinedload(Institution.volume_tariff)).filter(Institution.public_id == institution_id )
 
             # get all data
+            logger.info(f"[{session_code}] query db")
             institution_data = query.first()
             
             if institution_data:
+                # format data
+                logger.info(f"[{session_code}] format data")
                 institution_data = Institution_MF.model_validate(institution_data).model_dump()
-                # institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
-                # institution_data = institution_data.to_dict()
+                # create response data
+                logger.info(f"[{session_code}] create response data")
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=True, message=None)
                 _data = institution_data
                 _error = None
                 _status_code = status.HTTP_200_OK
             else:
+                # create institution not found response data
+                logger.info(f"[{session_code}] create institution not found response data")
+                _response_message = "institution not found"
                 _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message="istitution not found")
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
-                _error = BaseError(error_message="istitution not found")
+                _error = BaseError(error_message=_response_message)
                 _status_code = status.HTTP_404_NOT_FOUND                
 
     else:
-
+        # create unauthorized response data
+        logger.info(f"[{session_code}] create unauthorized response data")
+        _response_message = "unauthorized"
         _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
-        _error = BaseError(error_message="unauthorized")
+        _error = BaseError(error_message=_response_message)
         _status_code = status.HTTP_403_FORBIDDEN
 
-    
+    # create  response 
+    logger.info(f"[{session_code}] create  response ")    
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
     
@@ -2639,9 +2755,11 @@ def create_institution(
     # create request id
     _id = request.state.session_code
     # get role id of logged in user
+    logger.info(f"[{session_code}] get role id from jwt token")
     role_id =  decoded_token.get("rid")
 
     # create session with db
+    logger.info(f"[{session_code}] create session with db")
     with database_client.Session() as session:
 
         billing_frequency_data = session.query(
@@ -2656,18 +2774,22 @@ def create_institution(
             BillingModeTypeMaster.public_id==req_body.billing_mode_type_id
         ).first()
 
-        # cheeck if role is valid or admin using differnt cid
-        # if ( role_id not in (PortalRole.SUPER_ADMIN.value, PortalRole.ADMIN.value) ) or (role_id == PortalRole.ADMIN.value and decoded_token.get("cid") != company_data.public_id):
+        # check if user has permission to use this api
+        logger.info(f"[{session_code}] check if user has permission to use this api")
         if ( role_id not in (PortalRole.SUPER_ADMIN.value) ):
 
+            # create unauthorized response data
+            logger.info(f"[{session_code}] create unauthorized response data")
+            _response_message = "unauthorized"
             _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
-            _error = BaseError(error_message="unauthorized")
+            _error = BaseError(error_message=_response_message)
             _status_code = status.HTTP_403_FORBIDDEN
 
         else:
-            # create employee object
+            # create institution object
+            logger.info(f"[{session_code}] create institution object")
             institution_data = Institution(
                 institution_name=req_body.institution_name,
                 floor_cost=req_body.floor_cost,
@@ -2680,11 +2802,15 @@ def create_institution(
             )
 
             try:
-                # add employee to db
+                # add institution to db
+                logger.info(f"[{session_code}] add institution to db")
                 session.add(institution_data)
-                #session.refresh(institution_data)
+                # flush session
+                logger.info(f"[{session_code}] flush session")
                 session.flush()
 
+                # add volume tarrif to db
+                logger.info(f"[{session_code}] add volume tarrif to db")
                 if req_body.volume_tariff:
                     for vt in req_body.volume_tariff:
                         volume_tariff_data = VolumeTariff(
@@ -2696,13 +2822,19 @@ def create_institution(
                         )
                         session.add(volume_tariff_data)
 
+                # commit changes to db
+                logger.info(f"[{session_code}] commit changes to db")
                 session.commit()
+                # refresh data
+                logger.info(f"[{session_code}] refresh data")
                 session.refresh(institution_data)
 
+                # format data
+                logger.info(f"[{session_code}] format data")
                 institution_data = Institution_MF.model_validate(institution_data).model_dump()
-                # institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
                 
-                
+                # create response data
+                logger.info(f"[{session_code}] create response data")
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=True, message="created")
                 _data = institution_data
@@ -2710,13 +2842,17 @@ def create_institution(
                 _status_code = status.HTTP_200_OK
             except sqlalchemy.exc.IntegrityError as e:
 
+                # create user exists response data
+                logger.info(f"[{session_code}] create user exists response data")
+                _response_message = "user exists"
                 _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message="user exists")
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
-                _error = BaseError(error_message="user exists")
+                _error = BaseError(error_message=_response_message)
                 _status_code = status.HTTP_400_BAD_REQUEST
 
-
+    # create response 
+    logger.info(f"[{session_code}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
     
@@ -2731,26 +2867,33 @@ def update_institution(
     # create request id
     _id = request.state.session_code
     # get role id of logged in user
-    role_id = decoded_token.get("rid")
+    logger.info(f"[{session_code}] get role id from jwt token")
+    role_id =  decoded_token.get("rid")
+
 
     # create session with db
+    logger.info(f"[{session_code}] create session with db")
     with database_client.Session() as session:
 
-        # check if user has permission
+        # create unauthorized response data
+        logger.info(f"[{session_code}] create unauthorized response data")
         if role_id != PortalRole.SUPER_ADMIN.value:
+            _response_message = "unauthorized"
             _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
-            _error = BaseError(error_message="unauthorized")
+            _error = BaseError(error_message=_response_message)
             _status_code = status.HTTP_403_FORBIDDEN
         else:
             # retrieve the institution to be updated
+            logger.info(f"[{session_code}] retrieve the institution to be updated")
             institution_data = session.query(Institution).filter(Institution.public_id == institution_id).first()
             billing_frequency_data = session.query(BillingFrequencyMaster).filter(BillingFrequencyMaster.public_id == req_body.billing_frequency_id).first()
             billing_mode_type_data = session.query(BillingModeTypeMaster).filter(BillingModeTypeMaster.public_id==req_body.billing_mode_type_id).first()
 
             if institution_data:
                 # update institution data
+                logger.info(f"[{session_code}] update institution data")
                 institution_data.institution_name = req_body.institution_name
                 institution_data.floor_cost = req_body.floor_cost
                 institution_data.vat = req_body.vat
@@ -2758,8 +2901,9 @@ def update_institution(
                 institution_data.billing_end_date = req_body.billing_end_date
                 institution_data.billing_frequency_id=billing_frequency_data.billing_frequency_id
                 institution_data.billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
-                # commit the changes to the database
-
+                
+                #  get volume tarrif data
+                logger.info(f"[{session_code}] get volume tarrif data")
                 volume_tariff_data = session.query(
                     VolumeTariff
                 ).filter(
@@ -2767,10 +2911,14 @@ def update_institution(
                 ).all()
 
                 if volume_tariff_data:
+                    #  delete volume tarrif data
+                    logger.info(f"[{session_code}] delete volume tarrif data")
                     for vt in volume_tariff_data:
                         session.delete(vt)
                 
                 if req_body.volume_tariff:
+                    #  add volume tarrif data
+                    logger.info(f"[{session_code}] add volume tarrif data")
                     for vt in req_body.volume_tariff:
                         volume_tariff_data = VolumeTariff(
                             institution_id=institution_data.institution_id,
@@ -2781,25 +2929,34 @@ def update_institution(
                         )
                         session.add(volume_tariff_data)
 
+                #  flush + commit data
+                logger.info(f"[{session_code}] flush + commit data")
                 session.flush()
                 session.commit()
 
+                #  format data
+                logger.info(f"[{session_code}] format data")
                 institution_data = Institution_MF.model_validate(institution_data).model_dump()
-                # institution_data["volume_tariff"] =  [ VolumeTariff_MF.model_validate(i).model_dump() for i in institution_data["volume_tariff"] ] if institution_data["volume_tariff"] else None
                 
-
+                #  create response data
+                logger.info(f"[{session_code}] create response data")
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=True, message="updated")
                 _data = institution_data
                 _error = None
                 _status_code = status.HTTP_200_OK
             else:
+                #  create institution not found data
+                logger.info(f"[{session_code}] create institution not found data")
+                _response_message = "institution not found" 
                 _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message="institution not found")
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
-                _error = BaseError(error_message="institution not found")
+                _error = BaseError(error_message=_response_message)
                 _status_code = status.HTTP_404_NOT_FOUND
-
+    
+    # create response
+    logger.info(f"[{session_code}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
@@ -2813,39 +2970,56 @@ def delete_institution(
     # create request id
     _id = request.state.session_code
     # get role id of logged in user
-    role_id = decoded_token.get("rid")
+    logger.info(f"[{session_code}] get role id from jwt token")
+    role_id =  decoded_token.get("rid")
 
     # create session with db
+    logger.info(f"[{session_code}] create session with db")
     with database_client.Session() as session:
 
         # check if user has permission
+        logger.info(f"[{session_code}] check if user has permission")
         if role_id != PortalRole.SUPER_ADMIN.value:
+            # create unauthorized response data
+            logger.info(f"[{session_code}] create unauthorized response data")
+            _response_message = "unauthorized"
             _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
-            _error = BaseError(error_message="unauthorized")
+            _error = BaseError(error_message=_response_message)
             _status_code = status.HTTP_403_FORBIDDEN
         else:
             # retrieve the institution to be deleted
+            logger.info(f"[{session_code}] retrieve the institution to be deleted")
             institution_data = session.query(Institution).filter(Institution.public_id == institution_id).first()
 
             if institution_data:
                 # delete institution from the database
+                logger.info(f"[{session_code}] delete institution from the database")
                 session.delete(institution_data)
+                # commit data
+                logger.info(f"[{session_code}] commit data")
                 session.commit()
 
+                # create response data
+                logger.info(f"[{session_code}] create response data")
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=True, message="deleted")
                 _data = None
                 _error = None
                 _status_code = status.HTTP_200_OK
             else:
+                #  create institution not found data
+                logger.info(f"[{session_code}] create institution not found data")
+                _response_message = "institution not found" 
                 _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message="institution not found")
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
-                _error = BaseError(error_message="institution not found")
+                _error = BaseError(error_message=_response_message)
                 _status_code = status.HTTP_404_NOT_FOUND
 
+    # create response
+    logger.info(f"[{session_code}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
@@ -2861,20 +3035,28 @@ def volume_tariff(
     # create request id
     _id = request.state.session_code
     # get role id of logged in user
-    role_id = decoded_token.get("rid")
+    logger.info(f"[{session_code}] get role id from jwt token")
+    role_id =  decoded_token.get("rid")
 
     # create session with db
+    logger.info(f"[{session_code}] create session with db")
     with database_client.Session() as session:
 
         # check if user has permission
+        logger.info(f"[{session_code}] check if user has permission")
         if role_id != PortalRole.SUPER_ADMIN.value:
+            # create unauthorized response data
+            logger.info(f"[{session_code}] create unauthorized response data")
+            _response_message = "unauthorized"
             _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message="unauthorized")
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
-            _error = BaseError(error_message="unauthorized")
+            _error = BaseError(error_message=_response_message)
             _status_code = status.HTTP_403_FORBIDDEN
         else:
 
+            # filter billing information
+            logger.info(f"[{session_code}] filter billing information")
             if x_id_type == "company":
                 _institution_id = None
                 billing_data = session.query(BillingInformation).join(Company,Company.company_id==BillingInformation.company_id).filter(Company.public_id==req_body.item_id).first()
@@ -2886,7 +3068,8 @@ def volume_tariff(
 
 
             if _institution_id or _billing_id:
-
+                # create volume tarrif obj
+                logger.info(f"[{session_code}] create volume tarrif obj")
                 volume_tariff_data = VolumeTariff(
                     institution_id = _institution_id,
                     billing_id = _billing_id,
@@ -2895,22 +3078,32 @@ def volume_tariff(
                     rate = req_body.rate
                 )
 
-                # delete institution from the database
+                # add volume tarrif
+                logger.info(f"[{session_code}] add volume tarrif")
                 session.add(volume_tariff_data)
+                # commit volume tarrif
+                logger.info(f"[{session_code}] commit volume tarrif")
                 session.commit()
 
+                # create response data
+                logger.info(f"[{session_code}] create response data")
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=True, message="created")
                 _data = volume_tariff_data.to_dict()
                 _error = None
                 _status_code = status.HTTP_200_OK
             else:
+                #  create institution/company not found data
+                logger.info(f"[{session_code}] create institution/company not found data")
+                _response_message = "institution/company not found" 
                 _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message="institution/company not found")
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
-                _error = BaseError(error_message="institution/company not found")
+                _error = BaseError(error_message=_response_message)
                 _status_code = status.HTTP_404_NOT_FOUND
 
+    # create response
+    logger.info(f"[{session_code}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
 
