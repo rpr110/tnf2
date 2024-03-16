@@ -2,6 +2,7 @@
 ## Imports ##
 #############
 
+import inspect
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -57,8 +58,10 @@ class Rotolog:
         self.logger.info(message)
     
     def error(self, message:str) -> None:
+        # Get calling function name
+        calling_function = inspect.currentframe().f_back.f_code.co_name
         # Log an error message
-        self.logger.error(message)
+        self.logger.error(f"[{calling_function}]-{message}")
 
     def log_to_database(self, database_client, orm_obj, session_code, endpoint, user_id, company_id, project_id, license_id, status_id, service_id, status_code, ip_address, output, execution_time):
         new_log = orm_obj(

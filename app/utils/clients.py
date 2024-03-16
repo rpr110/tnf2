@@ -158,38 +158,3 @@ class OtpClient:
 
         # Commit changes to DB
         db_session.commit()
-
-
-###########################
-## Data Formatter Client ##
-###########################
-
-class DataFormatterClient:
-
-    def __init__(self) -> None:
-        pass
-
-    @staticmethod
-    def remove_keys_from_dict(data:dict, keys_to_remove:list)->None:
-        
-        if not isinstance(data, dict):
-            return
-
-        for key in keys_to_remove:
-            key_parts = key.split('.')
-            current_data = data
-            for part in key_parts[:-1]:
-                current_data = current_data.get(part, {})
-            last_key = key_parts[-1]
-            if last_key in current_data:
-                del current_data[last_key]
-
-        for key, value in data.items():
-            __class__.remove_keys_from_dict(value, keys_to_remove)
-
-    @staticmethod
-    def response_creator(response, meta, data, error, status_code, fastapi_response_class):
-        _content = response(meta=meta, data=data, error=error)
-        return fastapi_response_class(status_code=status_code, content=_content.model_dump())
-    
-

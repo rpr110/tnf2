@@ -4,10 +4,10 @@
 
 import datetime
 from jose import jwt
-from fastapi import Header, status
+from fastapi import Header, status, Request
 from fastapi.exceptions import HTTPException
 
-from app import redis_client
+from app import redis_client, logger
 from app.utils.models import Employee, Roles
 from app.utils.schema import BaseResponse, BaseMeta, BaseError
 
@@ -35,10 +35,12 @@ def decodeJwtToken(token:str) -> dict:
     payload = jwt.decode(token, JWT_SECRET_KEY, algorithms = [JWT_ALGORITHM])
     return payload
 
-async def decodeJwtTokenDependancy(token:str=Header(...,alias="x-access-token")):
+async def decodeJwtTokenDependancy(*, token:str=Header(...,alias="x-access-token"), request:Request):
     try:
+        # create request id
+        _id = request.state.session_code
+        logger.info(f"[{_id}] validating jwt")
 
-        
         token_email = redis_client.get_data(token)
         if not token_email:
             raise Exception("token doesnt exist")
@@ -46,6 +48,7 @@ async def decodeJwtTokenDependancy(token:str=Header(...,alias="x-access-token"))
         decoded_token = decodeJwtToken(token)
         return decoded_token
     except Exception as e:
+        logger.info(f"[{_id}] invalid jwt")
         _content = BaseResponse(
             meta=BaseMeta(
                 _id="",

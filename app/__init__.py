@@ -4,6 +4,7 @@
 
 import os
 import uuid
+import time
 import secrets
 
 from fastapi import FastAPI, Request, Depends, status
@@ -135,8 +136,8 @@ async def ping():
 
 
 # Add router to main FastAPI app
-from app.api.api import api
-app.include_router(api, prefix="/nface/portal/api")
+from app.api.api import api as app_api
+app.include_router(app_api, prefix="/nface/portal/api")
 logger.debug(f"Added Router to main Fast API app")
 
 
@@ -200,13 +201,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def unicorn_exception_handler(request: Request, exc: Exception):    
     # Log the error in log file
     _error = str(exc.with_traceback(None))
-    # Get session code
-    session_code = request.state.session_code
-    
     # log error
     logger.error(f"{_error}")
+    # Get session code
+    session_code = request.state.session_code
 
-    
     # Create responsee content
     _content = BaseResponse(
         meta=BaseMeta(
