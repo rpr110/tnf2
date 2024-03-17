@@ -89,21 +89,17 @@ class CreateEmployeeRequest(BaseModel):
 
 class RegisterClientRequest(BaseModel):
     # Billing Info
+    
     email_id:str
-    # fc_cpr:Optional[float]
-    # pl_cpr:Optional[float]
     floor_cost:Optional[float]
     vat:Optional[float]
 
-    # currency_id:Optional[float]
     billing_start_date:Optional[datetime.datetime]
     billing_end_date:Optional[datetime.datetime]
     billing_frequency_id:Optional[str]
     billing_mode_type_id:Optional[str]
     institution_id:Optional[str]
     volume_tariff:Optional[List]
-
-    # is_public:Optional[bool]
 
     # Company Info
     company_name:str
@@ -129,17 +125,13 @@ class UpdateCompanyRequest(BaseModel):
 
 class UpdateCompanyBillingRequest(BaseModel):
     email_id1:str
-    # fc_cpr:Optional[float]
-    # pl_cpr:Optional[float]
     floor_cost:Optional[float]
     vat:Optional[float]
-    # currency_id:Optional[float]
     billing_start_date:Optional[datetime.datetime]
     billing_end_date:Optional[datetime.datetime]
     billing_frequency_id:Optional[str]
     billing_mode_type_id:Optional[str]
     institution_id:Optional[str]
-    # is_public:Optional[bool]
     volume_tariff:Optional[List]
 
 class UpdateCompanyBankingRequest(BaseModel):
@@ -149,7 +141,6 @@ class UpdateCompanyBankingRequest(BaseModel):
     product_code:Optional[str]
     sort_code:Optional[str]
     payee_beneficiary:Optional[str]
-    # gateway_client_id:Optional[str]
     institution_code:Optional[str]
     billing_account_number:Optional[str]
     billing_bank_code:Optional[str]
@@ -159,7 +150,6 @@ class CreateInstitutionRequest(BaseModel):
     institution_name:str
     floor_cost:Optional[float]
     vat:Optional[float]
-    # currency_id:Optional[float]
     billing_start_date:Optional[datetime.datetime]
     billing_end_date:Optional[datetime.datetime]
     billing_frequency_id:Optional[str]
@@ -184,60 +174,57 @@ class FormatterModel(BaseModel):
 
 
 
-class CurrencyMaster_MF(FormatterModel):
+class CurrencyMasterMF(FormatterModel):
     
-    # public_id:str
     currency_id:str = Field(..., alias='public_id')
     currency_name:str
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-class StatusMaster_MF(FormatterModel):
+class StatusMasterMF(FormatterModel):
 
-    # public_id:str
     status_id:str = Field(..., alias='public_id')
     status:str
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-class ServiceMaster_MF(FormatterModel):
+class ServiceMasterMF(FormatterModel):
 
-    # public_id:str
     service_id:str = Field(..., alias='public_id')
     service_name:str
     service_description:Optional[str]
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-class BankTypeMaster_MF(FormatterModel):
+class BankTypeMasterMF(FormatterModel):
 
-    # public_id:str
+    
     bank_type_id:str = Field(..., alias='public_id')
     bank_type:str
     bank_type_description:Optional[None]
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-class BillingFrequencyMaster_MF(FormatterModel):
+class BillingFrequencyMasterMF(FormatterModel):
     
-    # public_id:str
+    
     billing_frequency_id:str = Field(..., alias='public_id')
     billing_frequency:str
     billing_frequency_description:Optional[None]
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-class BillingModeTypeMaster_MF(FormatterModel):
+class BillingModeTypeMasterMF(FormatterModel):
     
-    # public_id:str
+    
     billing_mode_type_id:Union[str,Any] = Field(..., alias='public_id')
     billing_mode_type:str
     billing_mode_type_description:Optional[None]
     create_date:datetime.datetime
     update_date:Optional[datetime.datetime]
 
-class Roles_MF(FormatterModel):
-    # public_id:str
+class RolesMF(FormatterModel):
+    
     role_id:str = Field(..., alias='public_id')
 
     role_name:str
@@ -245,21 +232,21 @@ class Roles_MF(FormatterModel):
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-class VerificationCode_MF(FormatterModel):
+class VerificationCodeMF(FormatterModel):
 
     email_id:str
     _code:str
     create_date:datetime.datetime
 
 
-class Wallet_MF(FormatterModel):
+class WalletMF(FormatterModel):
     wallet_id:Union[str,Any] = Field(..., alias='public_id')
     amount:float
     ledger_amount:float
     create_date:datetime.datetime
     update_date:Optional[datetime.datetime]
 
-class VolumeTariff_MF(FormatterModel):
+class VolumeTariffMF(FormatterModel):
     tariff_id:Union[str,Any] = Field(..., alias='public_id')
     min_volume:int
     max_volume:int
@@ -268,7 +255,7 @@ class VolumeTariff_MF(FormatterModel):
     update_date:Optional[datetime.datetime]
 
 
-class Institution_MF(FormatterModel):
+class InstitutionMF(FormatterModel):
     institution_id:Union[str,Any] = Field(..., alias='public_id')
     institution_name:str
     floor_cost: Optional[float]
@@ -276,39 +263,35 @@ class Institution_MF(FormatterModel):
     billing_start_date:datetime.datetime
     billing_end_date:datetime.datetime
 
-    currency : Optional[CurrencyMaster_MF]
-    billing_mode_type: Optional[BillingModeTypeMaster_MF]
-    billing_frequency : Optional[BillingFrequencyMaster_MF]
-    volume_tariff: Union[List[VolumeTariff_MF],  None ]
+    currency : Optional[CurrencyMasterMF]
+    billing_mode_type: Optional[BillingModeTypeMasterMF]
+    billing_frequency : Optional[BillingFrequencyMasterMF]
+    volume_tariff: Union[List[VolumeTariffMF],  None ]
     create_date:datetime.datetime
     update_date:Optional[datetime.datetime]
 
 
-class BillingInformation_MF(FormatterModel):
+class BillingInformationMF(FormatterModel):
 
-    # public_id:str
+    
     billing_id:str = Field(..., alias='public_id')
-    # billing_info_name:Optional[str]
     email_id1:Optional[str]
-    # fc_cpr:float
-    # pl_cpr:float
     floor_cost: Optional[float]
     billing_start_date:datetime.datetime
     billing_end_date:datetime.datetime
-    # is_public:bool
     create_date:datetime.datetime
     update_date:datetime.datetime
     vat:float
 
-    billing_mode_type: Optional[BillingModeTypeMaster_MF]
-    currency : Optional[CurrencyMaster_MF]
-    billing_frequency : Optional[BillingFrequencyMaster_MF]
-    institution: Optional[Institution_MF]
-    volume_tariff: Union[List[VolumeTariff_MF], None]
+    billing_mode_type: Optional[BillingModeTypeMasterMF]
+    currency : Optional[CurrencyMasterMF]
+    billing_frequency : Optional[BillingFrequencyMasterMF]
+    institution: Optional[InstitutionMF]
+    volume_tariff: Union[List[VolumeTariffMF], None]
 
 
 
-class CompanyBankingInfo_MF(FormatterModel):
+class CompanyBankingInfoMF(FormatterModel):
 
     routing_number:Optional[str]
     product_code:Optional[str]
@@ -316,18 +299,17 @@ class CompanyBankingInfo_MF(FormatterModel):
     payee_beneficiary:Optional[str]
     create_date:datetime.datetime
     update_date:datetime.datetime
-    # gateway_client_id:Optional[str]
     institution_code:Optional[str]
     billing_account_number:Optional[str]
     billing_bank_code:Optional[str]
     billing_account_name:Optional[str]
 
-    bank_type:Optional[BankTypeMaster_MF]
+    bank_type:Optional[BankTypeMasterMF]
 
 
-class Company_MF(FormatterModel):
+class CompanyMF(FormatterModel):
     
-    # public_id:str
+    
     company_id:Union[str, Any] = Field(..., alias='public_id')
     client_id: str
     company_name: str
@@ -335,29 +317,28 @@ class Company_MF(FormatterModel):
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-    billing_information:Optional[BillingInformation_MF]
-    banking_information:Optional[CompanyBankingInfo_MF]
-    wallet:Optional[Wallet_MF]
+    billing_information:Optional[BillingInformationMF]
+    banking_information:Optional[CompanyBankingInfoMF]
+    wallet:Optional[WalletMF]
 
 
-class Employee_MF(FormatterModel):
-    # public_id:str
+class EmployeeMF(FormatterModel):
+    
     employee_id:str = Field(..., alias='public_id')
 
     employee_name:Optional[str]
     email_id:str
-    #password:str
     phone_number:Optional[str]
     employee_profile_pic:Optional[bytes]
     is_active:bool
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-    role:Optional[Roles_MF]
-    company:Optional[Company_MF]
+    role:Optional[RolesMF]
+    company:Optional[CompanyMF]
 
 
-class NFaceLogs_MF(FormatterModel):
+class NFaceLogsMF(FormatterModel):
 
     public_id:str
     session_code:str
@@ -371,13 +352,13 @@ class NFaceLogs_MF(FormatterModel):
     create_date:datetime.datetime
     user_image:Optional[str]
 
-    company:Optional[Company_MF]
-    status:Optional[StatusMaster_MF]
-    service:Optional[ServiceMaster_MF]
+    company:Optional[CompanyMF]
+    status:Optional[StatusMasterMF]
+    service:Optional[ServiceMasterMF]
 
 
-class Invoice_MF(FormatterModel):
-    # public_id:str
+class InvoiceMF(FormatterModel):
+    
     invoice_id:str = Field(..., alias='public_id')
 
     start_date:datetime.datetime
@@ -390,5 +371,5 @@ class Invoice_MF(FormatterModel):
     create_date:datetime.datetime
     update_date:datetime.datetime
 
-    company:Optional[Company_MF]
+    company:Optional[CompanyMF]
 

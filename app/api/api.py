@@ -19,11 +19,22 @@ import requests
 from fastapi import APIRouter, Body, Depends, File, UploadFile, Form, Query, status, Request, Path, Header
 from fastapi.responses import ORJSONResponse, StreamingResponse
 
-from app.utils.dependencies import generateJwtToken, decodeJwtTokenDependancy
-from app.utils.schema import *
-from app import database_client, email_client, otp_client, redis_client, CryptographyClient, config, logger
-from app.utils.models import *
+from app.utils.dependencies import generate_jwt_token, decode_jwt_token_dependancy
 
+from app.utils.schema import PortalRole, BaseMeta, BaseError, BaseResponse, TokenMeta, TokenResponse, \
+    LoginRequest, ForgotPasswordRequest, ResetPasswordRequest, PaginationData, \
+    PaginationMeta, PaginationResponse, ModifyEmployeeDataRequest, \
+    ModifyEmployeePasswordRequest, CreateEmployeeRequest, RegisterClientRequest, \
+    UpdateCompanyRequest, UpdateCompanyBillingRequest, UpdateCompanyBankingRequest, \
+    CreateInstitutionRequest, UpdateInstitutionRequest, AddVolumeTariffRequest, \
+    CurrencyMasterMF, StatusMasterMF, ServiceMasterMF, BankTypeMasterMF, \
+    BillingFrequencyMasterMF, BillingModeTypeMasterMF, RolesMF, \
+    VerificationCodeMF, WalletMF, VolumeTariffMF, InstitutionMF, \
+    BillingInformationMF, CompanyBankingInfoMF, CompanyMF, EmployeeMF, \
+    NFaceLogsMF, InvoiceMF
+
+from app import database_client, email_client, otp_client, redis_client, CryptographyClient, config, logger
+from app.utils.models import CurrencyMaster, StatusMaster, ServiceMaster, BankTypeMaster, BillingModeTypeMaster, BillingFrequencyMaster, VerificationCode, Wallet, VolumeTariff, Institution, BillingInformation, Company, Roles, Employee, NFaceLogs, Invoice, CompanyBankingInfo
 
 ##########
 ## APIs ##
@@ -65,7 +76,7 @@ def login(
         response = requests.get(f"{config.nibss_msauth_advised_url}/{config.nibss_msauth_endpoint}?applicationName={config.nibss_msauth_app_name}", headers=ms_auth_headers)
         if response.status_code != status.HTTP_200_OK:
             # invalid credentials
-            _response_message = "invalid credentials"
+            _response_message = config.messages.invalid_credentials 
             response_data = response.json()
             logger.info(f"[{_id}] ms auth token not valid : {response_data.get('message',_response_message)}")
             _response = BaseResponse
@@ -98,10 +109,10 @@ def login(
         
         # check if employee exists / wrong password / is active (ie. is account disabled)
         logger.info(f"[{_id}] checking if employee exists / valid password / is not deactivated")
-        if not employee_data or  CryptographyClient.validate_string_against_hash(req_body.password, employee_data.password)  or not employee_data.is_active:
+        if not req_body.msauth_token and (not employee_data or not CryptographyClient.validate_string_against_hash(req_body.password, employee_data.password) or not employee_data.is_active ):
             
             logger.info(f"[{_id}] creating invalid credentials response")
-            _response_message = "invalid credentials"
+            _response_message = config.messages.invalid_credentials
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
@@ -112,11 +123,11 @@ def login(
 
             # retrive all employee info and format the data
             logger.info(f"[{_id}] format retreived data")
-            employee_data = Employee_MF.model_validate(employee_data).model_dump()
+            employee_data = EmployeeMF.model_validate(employee_data).model_dump()
 
             # create jwt token
             logger.info(f"[{_id}] generate jwt token")
-            jwt_token = generateJwtToken(
+            jwt_token = generate_jwt_token(
                 exp=100000,
                 uid=employee_data.get("employee_id"), # User ID
                 cid=employee_data.get("company",{}).get("company_id"), # Company ID
@@ -127,7 +138,6 @@ def login(
             logger.info(f"[{_id}] creating response data")
             _response = TokenResponse
             _meta = TokenMeta(_id=_id, successful=True, message="logged in", token=jwt_token)
-            # _data = employee_data
             _data = None
             _error = None
             _status_code = status.HTTP_200_OK
@@ -171,10 +181,11 @@ def forgot_password(
         if not employee_data or not employee_data.is_active:
 
             logger.info(f"[{_id}] creating invalid credentials response")
+            _response_message = config.messages.invalid_credentials
             _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message="invalid credentials")
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
-            _error = BaseError(error_message="invalid credentials")
+            _error = BaseError(error_message=_response_message)
             _status_code = status.HTTP_401_UNAUTHORIZED
         else:
             # Create Verification code
@@ -229,14 +240,10 @@ def reset_password(
         # check if verification code is valid
         logger.info(f"[{_id}] check if verification code is valid")
         verification_code_is_expired = ( datetime.datetime.now(pytz.utc) - verification_code_data.create_date.astimezone(pytz.utc) > datetime.timedelta(minutes=5) )
-        logger.debug(verification_code_is_expired)
-        logger.debug(verification_code_data.create_date.astimezone(pytz.utc))
-        logger.debug(datetime.datetime.now(pytz.utc) )
-        logger.debug(datetime.datetime.now(pytz.utc) - verification_code_data.create_date.astimezone(pytz.utc) )
         if not verification_code_data or verification_code_is_expired or verification_code_data._code != req_body.code:
 
             logger.info(f"[{_id}] creating invalid credentials response")
-            _response_message = "invalid credentials"
+            _response_message = config.messages.invalid_credentials
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
@@ -255,7 +262,7 @@ def reset_password(
 
             # update password
             logger.info(f"[{_id}] changing password")
-            employee_data.password = req_body.new_password
+            employee_data.password = CryptographyClient.hash_string(req_body.new_password)
 
             # commit session
             logger.info(f"[{_id}] commiting change in db")
@@ -282,7 +289,7 @@ def reset_password(
 def get_roles(
     *,
     x_verbose:bool=Header(False, alias="x-verbose"),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     
@@ -311,7 +318,7 @@ def get_roles(
 
         # format data
         logger.info(f"[{_id}] format the recieved data")
-        role_data = [ Roles_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in role_data ] 
+        role_data = [ RolesMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in role_data ] 
     
     logger.info(f"[{_id}] create response data")
     _response = BaseResponse
@@ -333,7 +340,7 @@ def get_all_employees(
     page_no:int= Query(1),
     items_per_page:int= Query(15),
     search:str=Query(None),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -390,7 +397,7 @@ def get_all_employees(
             if employee_data:
                 # format data
                 logger.info(f"[{_id}] format retreived employee data")
-                employee_data = [  Employee_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in employee_data  ]
+                employee_data = [  EmployeeMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in employee_data  ]
         
         logger.info(f"[{_id}] create response data")
         _response = PaginationResponse
@@ -403,7 +410,7 @@ def get_all_employees(
     else:
         # create unauthorized response data
         logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message= _response_message)
         _data = None
@@ -421,7 +428,7 @@ def get_employee(
     *,
     x_verbose:bool=Header(True, alias="x-verbose"),
     employee_id:str=Path(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     
@@ -434,7 +441,7 @@ def get_employee(
     logger.info(f"[{_id}] check if user is authorized to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole)  :
         logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -481,7 +488,7 @@ def get_employee(
 
             if employee_data:
                 logger.info(f"[{_id}] format retreived data")
-                employee_data = Employee_MF.model_validate(employee_data).model_dump() if x_verbose else employee_data._asdict()
+                employee_data = EmployeeMF.model_validate(employee_data).model_dump() if x_verbose else employee_data._asdict()
 
                 logger.info(f"[{_id}] create response data")
                 _response = BaseResponse
@@ -514,7 +521,7 @@ def get_employee(
 def create_employee(
     *,
     req_body:CreateEmployeeRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     # create request id
@@ -537,7 +544,7 @@ def create_employee(
         logger.info(f"[{_id}] check if user is authorised to use this endpoint")
         if ( role_id not in (PortalRole.SUPER_ADMIN.value, PortalRole.ADMIN.value) ) or (role_id == PortalRole.ADMIN.value and decoded_token.get("cid") != company_data.public_id):
             logger.info(f"[{_id}] create unathorized response data")
-            _response_message = "unauthorized"
+            _response_message = config.messages.unauthorized
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
@@ -568,7 +575,7 @@ def create_employee(
                 logger.info(f"[{_id}] create response data")
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=True, message="created")
-                _data = Employee_MF.model_validate(employee_data).model_dump()
+                _data = EmployeeMF.model_validate(employee_data).model_dump()
                 _error = None
                 _status_code = status.HTTP_200_OK
 
@@ -578,7 +585,7 @@ def create_employee(
                 
             except sqlalchemy.exc.IntegrityError as e:
 
-                logger.info(f"[{_id}] create: user exists data")
+                logger.info(f"[{_id}] create: user exists data {e}")
                 _response_message = "user exists"
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
@@ -596,7 +603,7 @@ def modify_employee(
     *,
     employee_id:str=Path(...),
     req_body:ModifyEmployeeDataRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     # create request id
@@ -609,7 +616,7 @@ def modify_employee(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  (role_id == PortalRole.EXPLORER.value and employee_id != decoded_token.get("uid")):
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -671,7 +678,7 @@ def modify_employee(
 
                 # format the employee object
                 logger.info(f"[{_id}] format the employee object")
-                employee_data = Employee_MF.model_validate(employee_data).model_dump()
+                employee_data = EmployeeMF.model_validate(employee_data).model_dump()
 
                 # create response data
                 logger.info(f"[{_id}] create response data")
@@ -691,7 +698,7 @@ def update_password(
     *,
     employee_id:str=Path(...),
     req_body:ModifyEmployeePasswordRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
      # create request id
@@ -704,7 +711,7 @@ def update_password(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  (role_id == PortalRole.EXPLORER.value and employee_id != decoded_token.get("uid")):
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -755,10 +762,13 @@ def update_password(
                 _status_code = status.HTTP_404_NOT_FOUND
             else:
 
+                logger.debug(req_body)
+                logger.debug(employee_data)
+                logger.debug(employee_data.password)
                 if role_id == PortalRole.EXPLORER.value and not CryptographyClient.validate_string_against_hash(req_body.old_password, employee_data.password):
                     # create invalid credentials response data
                     logger.info(f"[{_id}] create invalid credentials response data")
-                    _response_message = "invalid credentials"
+                    _response_message = config.messages.invalid_credentials
                     _response = BaseResponse
                     _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                     _data = None
@@ -815,7 +825,7 @@ def update_password(
 def delete_employee(
     *,
     employee_id:str=Path(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
      # create request id
@@ -828,7 +838,7 @@ def delete_employee(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (PortalRole.SUPER_ADMIN.value, PortalRole.ADMIN.value) :
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -916,7 +926,7 @@ def get_nface_logs(
     end_datetime:datetime.datetime = Query(...),
     page_no:int = Query(1),
     items_per_page:int = Query(15),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -929,7 +939,7 @@ def get_nface_logs(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1004,7 +1014,7 @@ def get_nface_logs(
 
             # format retrieved data
             logger.info(f"[{_id}] format retrieved data")
-            log_data = [ NFaceLogs_MF.model_validate(_).model_dump() for _ in log_data ]
+            log_data = [ NFaceLogsMF.model_validate(_).model_dump() for _ in log_data ]
 
             # create response data
             logger.info(f"[{_id}] create response data")
@@ -1041,7 +1051,7 @@ def get_nface_logs(
     elif x_response_type == "csv-transaction" or x_response_type == "transaction-excel":
     
         
-        columns = ["Transaction ID/Ref","Sending_institution","Beneficiary_institution","Terminal", "Transaction Type","Transaction Amount", "Fee", "VAT Fee", "Platform Fee", "Sending_bank fee", "Beneficiary Bank Fee", "Introducer fee", "Transaction Date", "Sender Account Name", "Sender Account Number", "Beneficiary Account Name", "Beneficiary Account Number"]
+        columns = ["Transaction ID/Ref","Sending_institution","Beneficiary_institution","Terminal", "Transaction Type", "Service","Transaction Amount", "Fee", "VAT Fee", "Platform Fee", "Sending_bank fee", "Beneficiary Bank Fee", "Introducer fee", "Transaction Date", "Sender Account Name", "Sender Account Number", "Beneficiary Account Name", "Beneficiary Account Number"]
 
         formatted_date = end_datetime.strftime("%Y%m%d")
 
@@ -1058,6 +1068,7 @@ def get_nface_logs(
             beneficiary_institution = "NIBSS"
             terminal = None
             transaction_type = "CR"
+            service=row.get("service",{}).get("service_name")
 
             if ( row.get("service",{}).get("service_name") == "PASSIVE_LIVENESS" and row.get("status",{}).get("status") != "ISSUE"):
                 transaction_amount = 50
@@ -1079,7 +1090,7 @@ def get_nface_logs(
             beneficiary_account_name = "NIBSS"
             beneficiary_account_number = None
 
-            data.append([transaction_id_ref, sending_institution, beneficiary_institution, terminal, transaction_type, transaction_amount, fee, vat_fee, platform_fee, sending_bank_fee, beneficiary_bank_fee, introducer_fee, transaction_date, sender_account_name, sender_account_number, beneficiary_account_name, beneficiary_account_number])
+            data.append([transaction_id_ref, sending_institution, beneficiary_institution, terminal, transaction_type, service, transaction_amount, fee, vat_fee, platform_fee, sending_bank_fee, beneficiary_bank_fee, introducer_fee, transaction_date, sender_account_name, sender_account_number, beneficiary_account_name, beneficiary_account_number])
 
         # Create a DataFrame from the data and columns
         logger.info(f"[{_id}] Create a DataFrame from the data and columns")
@@ -1113,7 +1124,7 @@ def get_nface_stats(
     company_id:str=Query(...), # all / company_id
     start_datetime:datetime.datetime = Query(...),
     end_datetime:datetime.datetime = Query(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     # create request id
@@ -1126,7 +1137,7 @@ def get_nface_stats(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1215,7 +1226,7 @@ def get_invoice(
     end_datetime:datetime.datetime = Query(...),
     page_no:int= Query(1),
     items_per_page:int= Query(15),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     # create request id
@@ -1228,7 +1239,7 @@ def get_invoice(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) or (company_id != "all" and role_id != PortalRole.SUPER_ADMIN.value ):
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1287,7 +1298,7 @@ def get_invoice(
             if invoice_data:
                 # format data
                 logger.info(f"[{_id}] format retreived invoice_data")
-                invoice_data = [  Invoice_MF.model_validate(i).model_dump() for i in invoice_data  ]
+                invoice_data = [  InvoiceMF.model_validate(i).model_dump() for i in invoice_data  ]
             
         if x_response_type == "json":
             logger.info(f"[{_id}] create response data")
@@ -1495,7 +1506,7 @@ def get_invoice_stats(
     company_id:str=Query("all"),
     start_datetime:datetime.datetime = Query(...),
     end_datetime:datetime.datetime = Query(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     
@@ -1509,7 +1520,7 @@ def get_invoice_stats(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) or (company_id != "all" and role_id != PortalRole.SUPER_ADMIN.value ):
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1580,7 +1591,7 @@ def bank_type(
     *,
     x_verbose:bool=Header(True, alias="x-verbose"),
 
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -1594,7 +1605,7 @@ def bank_type(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1622,7 +1633,7 @@ def bank_type(
             if bank_type_data:
                 # format data
                 logger.info(f"[{_id}] format retreived bank type data")
-                bank_type_data = [  BankType_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in bank_type_data  ]
+                bank_type_data = [  BankTypeMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in bank_type_data  ]
         
             # create response data
             logger.info(f"[{_id}] create response data")
@@ -1642,7 +1653,7 @@ def billing_frequency(
     *,
     x_verbose:bool=Header(True, alias="x-verbose"),
 
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -1656,7 +1667,7 @@ def billing_frequency(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1684,7 +1695,7 @@ def billing_frequency(
             if billing_frequency_data:
                 # format data
                 logger.info(f"[{_id}] format billing_frequency_data data")
-                billing_frequency_data = [  BillingFrequency_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in billing_frequency_data  ]
+                billing_frequency_data = [  BillingFrequencyMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in billing_frequency_data  ]
     
             # create response data
             logger.info(f"[{_id}] create response data")
@@ -1706,7 +1717,7 @@ def billing_mode_type(
     *,
     x_verbose:bool=Header(True, alias="x-verbose"),
 
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -1720,7 +1731,7 @@ def billing_mode_type(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1748,7 +1759,7 @@ def billing_mode_type(
             if billing_mode_data:
                 # format data
                 logger.info(f"[{_id}] format billing_mode_data type data")
-                billing_mode_data = [  BillingMode_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in billing_mode_data  ]
+                billing_mode_data = [  BillingModeMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in billing_mode_data  ]
         
             # create response data
             logger.info(f"[{_id}] create response data")
@@ -1775,7 +1786,7 @@ def get_all_companies(
 
     page_no:int= Query(1),
     items_per_page:int= Query(15),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -1789,7 +1800,7 @@ def get_all_companies(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1827,7 +1838,7 @@ def get_all_companies(
             if company_data:
                 # format data
                 logger.info(f"[{_id}] format data")
-                company_data = [Company_MF.model_validate(i).model_dump() for i in company_data] if x_verbose else [i._asdict() for i in company_data]
+                company_data = [CompanyMF.model_validate(i).model_dump() for i in company_data] if x_verbose else [i._asdict() for i in company_data]
 
             # create response data
             logger.info(f"[{_id}] create response data")
@@ -1849,7 +1860,7 @@ def get_company(
     x_verbose:bool=Header(True, alias="x-verbose"),
 
     company_id:str=Path(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -1863,7 +1874,7 @@ def get_company(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1892,7 +1903,7 @@ def get_company(
             if company_data:
                 # format data
                 logger.info(f"[{_id}] format data")
-                company_data = [Company_MF.model_validate(i).model_dump() for i in company_data] if x_verbose else [i._asdict() for i in company_data]
+                company_data = [CompanyMF.model_validate(i).model_dump() for i in company_data] if x_verbose else [i._asdict() for i in company_data]
 
                 # create response data
                 logger.info(f"[{_id}] create response data")
@@ -1922,7 +1933,7 @@ def get_company(
 def onboard_client(
     *,
     req_body:RegisterClientRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -1936,7 +1947,7 @@ def onboard_client(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -1968,7 +1979,7 @@ def onboard_client(
                 session.flush()
             except sqlalchemy.exc.IntegrityError as e:
                 # create company/client_id exists response data
-                logger.info(f"[{_id}] create company/client_id exists response data")
+                logger.info(f"[{_id}] create company/client_id exists response data {e}")
                 _response_message = "company/client_id exists"
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
@@ -2088,7 +2099,7 @@ def onboard_client(
             if company_data:
                 # format data
                 logger.info(f"[{_id}] format data")
-                company_data = Company_MF.model_validate(company_data).model_dump()  
+                company_data = CompanyMF.model_validate(company_data).model_dump()  
                         
         # create response data
         logger.info(f"[{_id}] create response data")
@@ -2109,7 +2120,7 @@ def update_company(
     *,
     company_id:str=Path(...),
     req_body:UpdateCompanyRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -2123,7 +2134,7 @@ def update_company(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2152,7 +2163,7 @@ def update_company(
                 session.flush()
             except sqlalchemy.exc.IntegrityError as e:
                 # create company/client_id exists response data
-                logger.info(f"[{_id}] create company/client_id exists response data")
+                logger.info(f"[{_id}] create company/client_id exists response data {e}")
                 _response_message = "company/client_id exists"
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
@@ -2173,7 +2184,7 @@ def update_company(
             if company_data:
                 # format data
                 logger.info(f"[{_id}] format data")
-                company_data = Company_MF.model_validate(company_data).model_dump()  
+                company_data = CompanyMF.model_validate(company_data).model_dump()  
 
         # create response data
         logger.info(f"[{_id}] create response data")
@@ -2194,7 +2205,7 @@ def update_company_billing(
     *,
     company_id:str=Path(...),
     req_body:UpdateCompanyBillingRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -2208,7 +2219,7 @@ def update_company_billing(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2295,7 +2306,7 @@ def update_company_billing(
 
                 # format company data
                 logger.info(f"[{_id}] format company data")
-                company_data = Company_MF.model_validate(company_data).model_dump()  
+                company_data = CompanyMF.model_validate(company_data).model_dump()  
                         
             # create response data
             logger.info(f"[{_id}] create response data")
@@ -2316,7 +2327,7 @@ def update_company_banking(
     *,
     company_id:str=Path(...),
     req_body:UpdateCompanyBankingRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
 
@@ -2331,7 +2342,7 @@ def update_company_banking(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2369,7 +2380,6 @@ def update_company_banking(
             banking_data.product_code=req_body.product_code
             banking_data.sort_code=req_body.sort_code
             banking_data.payee_beneficiary=req_body.payee_beneficiary
-            # banking_data.gateway_client_id=req_body.gateway_client_id
             banking_data.institution_code=req_body.institution_code
             banking_data.billing_account_number=req_body.billing_account_number
             banking_data.billing_bank_code=req_body.billing_bank_code
@@ -2383,7 +2393,7 @@ def update_company_banking(
             if company_data:
                 # format company data
                 logger.info(f"[{_id}] format company data")
-                company_data = Company_MF.model_validate(company_data).model_dump()  
+                company_data = CompanyMF.model_validate(company_data).model_dump()  
                         
 
             # create response data
@@ -2405,7 +2415,7 @@ def delete_company(
     *,
 
     company_id:str=Path(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -2419,7 +2429,7 @@ def delete_company(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2489,7 +2499,7 @@ def wallet(
     *,
     company_id:str=Path(...),
 
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -2503,7 +2513,7 @@ def wallet(
     if not (role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value): # SUPER ADMIN
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2561,7 +2571,7 @@ async def load_wallet(
     company_id:str=Path(...),
     # amount:int = Body(...),
 
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -2578,7 +2588,7 @@ async def load_wallet(
     if role_id == PortalRole.EXPLORER.value: # SUPER ADMIN
         # create unathorized response data
         logger.info(f"[{_id}] create unathorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2643,7 +2653,7 @@ def institutions(
 
     page_no:int= Query(1),
     items_per_page:int= Query(15),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -2686,7 +2696,7 @@ def institutions(
             if institution_data:
                 # format data
                 logger.info(f"[{_id}] format data")
-                institution_data = [  Institution_MF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in institution_data  ]
+                institution_data = [  InstitutionMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in institution_data  ]
 
         # create response data
         logger.info(f"[{_id}] create response data")
@@ -2700,7 +2710,7 @@ def institutions(
     else:
         # create unauthorized response data
         logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2717,7 +2727,7 @@ def institutions(
 def institution(
     *,
     institution_id:str= Path(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request,
 ):
     # create request id
@@ -2747,7 +2757,7 @@ def institution(
             if institution_data:
                 # format data
                 logger.info(f"[{_id}] format data")
-                institution_data = Institution_MF.model_validate(institution_data).model_dump()
+                institution_data = InstitutionMF.model_validate(institution_data).model_dump()
                 # create response data
                 logger.info(f"[{_id}] create response data")
                 _response = BaseResponse
@@ -2768,7 +2778,7 @@ def institution(
     else:
         # create unauthorized response data
         logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = "unauthorized"
+        _response_message = config.messages.unauthorized
         _response = BaseResponse
         _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
         _data = None
@@ -2786,7 +2796,7 @@ def institution(
 def create_institution(
     *,
     req_body:CreateInstitutionRequest=Body(...),
-    decoded_token:dict = Depends(decodeJwtTokenDependancy),
+    decoded_token:dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     # create request id
@@ -2817,7 +2827,7 @@ def create_institution(
 
             # create unauthorized response data
             logger.info(f"[{_id}] create unauthorized response data")
-            _response_message = "unauthorized"
+            _response_message = config.messages.unauthorized
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
@@ -2868,7 +2878,7 @@ def create_institution(
 
                 # format data
                 logger.info(f"[{_id}] format data")
-                institution_data = Institution_MF.model_validate(institution_data).model_dump()
+                institution_data = InstitutionMF.model_validate(institution_data).model_dump()
                 
                 # create response data
                 logger.info(f"[{_id}] create response data")
@@ -2880,7 +2890,7 @@ def create_institution(
             except sqlalchemy.exc.IntegrityError as e:
 
                 # create user exists response data
-                logger.info(f"[{_id}] create user exists response data")
+                logger.info(f"[{_id}] create user exists response data {e}")
                 _response_message = "user exists"
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
@@ -2899,7 +2909,7 @@ def update_institution(
     *,
     institution_id: str = Path(...),
     req_body: UpdateInstitutionRequest = Body(...),
-    decoded_token: dict = Depends(decodeJwtTokenDependancy),
+    decoded_token: dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     # create request id
@@ -2916,7 +2926,7 @@ def update_institution(
         # create unauthorized response data
         logger.info(f"[{_id}] create unauthorized response data")
         if role_id != PortalRole.SUPER_ADMIN.value:
-            _response_message = "unauthorized"
+            _response_message = config.messages.unauthorized
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
@@ -2974,7 +2984,7 @@ def update_institution(
 
                 #  format data
                 logger.info(f"[{_id}] format data")
-                institution_data = Institution_MF.model_validate(institution_data).model_dump()
+                institution_data = InstitutionMF.model_validate(institution_data).model_dump()
                 
                 #  create response data
                 logger.info(f"[{_id}] create response data")
@@ -3003,7 +3013,7 @@ def update_institution(
 def delete_institution(
     *,
     institution_id: str = Path(...),
-    decoded_token: dict = Depends(decodeJwtTokenDependancy),
+    decoded_token: dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
     # create request id
@@ -3021,7 +3031,7 @@ def delete_institution(
         if role_id != PortalRole.SUPER_ADMIN.value:
             # create unauthorized response data
             logger.info(f"[{_id}] create unauthorized response data")
-            _response_message = "unauthorized"
+            _response_message = config.messages.unauthorized
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None
@@ -3068,7 +3078,7 @@ def volume_tariff(
     *,
     x_id_type: str = Header("institution", alias="x-id-type"),
     req_body:AddVolumeTariffRequest=Body(...),
-    decoded_token: dict = Depends(decodeJwtTokenDependancy),
+    decoded_token: dict = Depends(decode_jwt_token_dependancy),
     request:Request
 ):
 
@@ -3087,7 +3097,7 @@ def volume_tariff(
         if role_id != PortalRole.SUPER_ADMIN.value:
             # create unauthorized response data
             logger.info(f"[{_id}] create unauthorized response data")
-            _response_message = "unauthorized"
+            _response_message = config.messages.unauthorized
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
             _data = None

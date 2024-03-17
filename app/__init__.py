@@ -42,7 +42,7 @@ logger = Rotolog(
     log_level=config.log_level
 )
 
-logger.info(f"Application Started")
+logger.info("Application Started")
 
 
 ###################
@@ -76,7 +76,6 @@ logger.debug(f"Setup OtpClient {otp_client}")
 app = FastAPI(
     title=config.app_name,
     version=config.app_version,
-    # terms_of_service=config.app_terms_of_service_link,
     contact={
         "name": config.app_contact_name,
         "email": config.app_contact_email,
@@ -86,7 +85,7 @@ app = FastAPI(
     redoc_url=None
 )
 
-logger.debug(f"FastAPI Object Initialized")
+logger.debug("FastAPI Object Initialized")
 
 
 
@@ -123,7 +122,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-logger.debug(f"Added CORS middleware")
+logger.debug("Added CORS middleware")
 
 
 ################
@@ -139,7 +138,7 @@ async def ping():
 # Add router to main FastAPI app
 from app.api.api import api as app_api
 app.include_router(app_api, prefix="/nface/portal/api")
-logger.debug(f"Added Router to main Fast API app")
+logger.debug("Added Router to main Fast API app")
 
 
 #######################

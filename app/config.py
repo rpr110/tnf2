@@ -3,6 +3,7 @@
 #############
 
 import os
+import typing
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 
@@ -59,3 +60,15 @@ class Settings(BaseSettings):
     log_max_bytes:int
     log_backup_count:int
     log_logger_name:str
+
+    # Constant Messages
+    messages:typing.Optional[typing.Any] = type('MESSAGES', (), {
+        "invalid_credentials": "invalid credentials",
+        "unauthorized":"unauthorized"
+    })()
+    
+
+
+
+config = Settings()
+print(config.messages.invalid_credentials)

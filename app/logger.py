@@ -62,24 +62,3 @@ class Rotolog:
         calling_function = inspect.currentframe().f_back.f_code.co_name
         # Log an error message
         self.logger.error(f"[{calling_function}]-{message}")
-
-    def log_to_database(self, database_client, orm_obj, session_code, endpoint, user_id, company_id, project_id, license_id, status_id, service_id, status_code, ip_address, output, execution_time):
-        new_log = orm_obj(
-            session_code=session_code,
-            endpoint=endpoint,
-            user_id=user_id,
-            company_id=company_id,
-            project_id=project_id,
-            license_id=license_id,
-            status_id=status_id,
-            service_id=service_id,
-            status_code=status_code,
-            ip_address=ip_address,
-            output=output,
-            execution_time=execution_time
-        )
-        with database_client.Session() as session:
-            session.add(new_log)
-            session.commit()
-
-    

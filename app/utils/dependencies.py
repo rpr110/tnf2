@@ -24,18 +24,18 @@ JWT_ALGORITHM = "HS256"
 ## Functions ##
 ###############
 
-def generateJwtToken(exp:int, **kwargs) -> str:
+def generate_jwt_token(exp:int, **kwargs) -> str:
     to_encode = kwargs.copy()
-    expire = datetime.datetime.utcnow() + datetime.timedelta(seconds=exp)
+    expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=exp)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm = JWT_ALGORITHM)
     return encoded_jwt
 
-def decodeJwtToken(token:str) -> dict:
+def decode_jwt_token(token:str) -> dict:
     payload = jwt.decode(token, JWT_SECRET_KEY, algorithms = [JWT_ALGORITHM])
     return payload
 
-async def decodeJwtTokenDependancy(*, token:str=Header(...,alias="x-access-token"), request:Request):
+async def decode_jwt_token_dependancy(*, token:str=Header(...,alias="x-access-token"), request:Request):
     try:
         # create request id
         _id = request.state.session_code
@@ -45,7 +45,7 @@ async def decodeJwtTokenDependancy(*, token:str=Header(...,alias="x-access-token
         if not token_email:
             raise Exception("token doesnt exist")
 
-        decoded_token = decodeJwtToken(token)
+        decoded_token = decode_jwt_token(token)
         return decoded_token
     except Exception as e:
         logger.info(f"[{_id}] invalid jwt")

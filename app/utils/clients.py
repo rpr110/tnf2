@@ -178,4 +178,7 @@ class CryptographyClient:
     @staticmethod
     def validate_string_against_hash(input_string, hashed_string):
         # Check a stored string against one provided by user
-        return bcrypt.checkpw(input_string.encode('utf-8'), hashed_string)
+        try:
+            return bcrypt.checkpw(input_string.encode('utf-8'), hashed_string)
+        except:
+            return False

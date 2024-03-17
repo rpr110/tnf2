@@ -28,7 +28,7 @@ from jose import jwt
 @pytest.fixture
 def client_fixture(monkeypatch):
 
-    global app, database_client, email_client, otp_client, redis_client , decodeJwtTokenDependancy, PortalRole
+    global app, database_client, email_client, otp_client, redis_client , decode_jwt_token_dependancy, PortalRole
 
     # SQL ALCHEMY MOCKS
 
@@ -65,12 +65,17 @@ def client_fixture(monkeypatch):
     # Patch requests delete
     monkeypatch.setattr(requests, "delete", MagicMock())
 
-    from app import app, database_client, email_client, otp_client, redis_client
-    from app.utils.dependencies import decodeJwtTokenDependancy
+    from app import app, database_client, email_client, otp_client, redis_client, config
+    from app.utils.dependencies import decode_jwt_token_dependancy
     from app.utils.schema import PortalRole
+
+    config.env_type="unit-test"
+
 
     with TestClient(app) as client:
         yield client
+
+    config.env_type="prod"
 
 SUPER_ADMIN_ID = "ECE70147-BE8A-43E4-9E19-350B8EC2DB8A"
 ADMIN_ID = "6E5D878B-FC83-4508-988B-1D40D54EB1DA"
@@ -88,8 +93,8 @@ base_url="/nface/portal/api"
 @pytest.mark.parametrize(
     "req_body, msauth_return_status_code, db_return_data, expected_response_status_code",
     [
-        ({"email_id": "test@example.com", "password": "password", "msauth_token":None}, None, {"password":"password"}, 200),
-        ({"email_id": "test@example.com", "password": "wrong-password", "msauth_token":None}, None, {"password":"password"}, 401),
+        ({"email_id": "test@example.com", "password": "password", "msauth_token":None}, None, {"password":b'$2b$12$ty7M6A/jbJ.i4/y1r3fy3OaHO9H.84OMGpRKuEEB/pL/imZlOHaBq'}, 200),
+        ({"email_id": "test@example.com", "password": "wrong-password", "msauth_token":None}, None, {"password":b'$2b$12$ty7M6A/jbJ.i4/y1r3fy3OaHO9H.84OMGpRKuEEB/pL/imZlOHaBq'}, 401),
         ({"email_id": None, "password": None, "msauth_token":"token"}, 200, None, 200),
         ({"email_id": None, "password": None, "msauth_token":"wrong-token"}, 403, None, 401),
         ("None", None, None, 400),
@@ -139,7 +144,7 @@ def test_login(client_fixture, monkeypatch, req_body, msauth_return_status_code,
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Employee_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.EmployeeMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -204,7 +209,6 @@ def test_reset_password(client_fixture, monkeypatch, req_body, expected_response
 
     # Create MagicMock instances for each intermediate object in the chain
     mock_query = MagicMock()
-    # mock_options = MagicMock()
     mock_filter = MagicMock()
     mock_first = MagicMock()
 
@@ -257,7 +261,7 @@ def test_roles(client_fixture, monkeypatch):
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Roles_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.RolesMF", mocked_formatter)
 
     # Make a request with valid credentials
     response = client_fixture.get(f"{base_url}/roles", headers={"x-verbose":"true","x-access-token":"s"} )
@@ -311,7 +315,7 @@ def test_get_all_employees(client_fixture, monkeypatch, role_id, expected_respon
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Employee_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.EmployeeMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -337,8 +341,6 @@ def test_get_employee(client_fixture, monkeypatch, role_id, employee_data, expec
     # Mock JWT
     monkeypatch.setattr(jwt, "decode", lambda *args,**kwargs: {"cid":-1, "uid":-1,"rid":role_id})
 
-    company_id = "all"
-    search = "pekla"
 
     # Mock Database Queries
 
@@ -372,7 +374,7 @@ def test_get_employee(client_fixture, monkeypatch, role_id, employee_data, expec
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Employee_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.EmployeeMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -430,7 +432,7 @@ def test_create_employee(client_fixture, monkeypatch, role_id, expected_response
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Employee_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.EmployeeMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -497,7 +499,7 @@ def test_modify_employee(client_fixture, monkeypatch, role_id, expected_response
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Employee_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.EmployeeMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -539,12 +541,12 @@ def test_update_password(client_fixture, monkeypatch, role_id, employee_not_foun
 
     # Set the return_value attribute for each intermediate MagicMock object
     monkeypatch.setattr(database_client.Session.return_value.__enter__.return_value, "query", mock_query)
-    monkeypatch.setattr(mock_query.return_value, "options", mock_options)
-    monkeypatch.setattr(mock_options.return_value, "filter", mock_filter)
+    # monkeypatch.setattr(mock_query.return_value, "options", mock_options)
+    monkeypatch.setattr(mock_query.return_value, "filter", mock_filter)
     monkeypatch.setattr(mock_filter.return_value, "first", mock_first)
 
     # Create a dictionary to represent the return value of session.query.first()
-    employee_data = MagicMock(password="", is_active=True, employee_id=-1, company=MagicMock(company_id=-1), role=MagicMock(role_id=-1)) if not employee_not_found else None
+    employee_data = MagicMock(password=b"abc", is_active=True, employee_id=-1, company=MagicMock(company_id=-1), role=MagicMock(role_id=-1), password_old_1=None, password_old_2=None, password_old_3=None, password_old_4=None, password_old_5=None, password_old_6=None, password_old_7=None, password_old_8=None, password_old_9=None, password_old_10=None, password_old_11=None, password_old_12=None)
     mock_first.return_value = employee_data
 
     # Patch model_validate and model_dump methods
@@ -561,7 +563,7 @@ def test_update_password(client_fixture, monkeypatch, role_id, employee_not_foun
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Employee_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.EmployeeMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -623,7 +625,7 @@ def test_delete_employee(client_fixture, monkeypatch, role_id, employee_not_foun
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Employee_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.EmployeeMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -689,7 +691,7 @@ def test_get_nface_logs(client_fixture, monkeypatch, role_id, response_type, exp
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -766,7 +768,7 @@ def test_get_nface_stats(client_fixture, monkeypatch, role_id, expected_response
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -844,7 +846,7 @@ def test_get_invoice(client_fixture, monkeypatch, role_id, response_type, bank_t
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Invoice_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.InvoiceMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -920,7 +922,7 @@ def test_get_invoive_stats(client_fixture, monkeypatch, role_id, expected_respon
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -992,7 +994,7 @@ def test_bank_type(client_fixture, monkeypatch, role_id, expected_response_statu
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1064,7 +1066,7 @@ def test_billing_frequency(client_fixture, monkeypatch, role_id, expected_respon
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1136,7 +1138,7 @@ def test_billing_mode_type(client_fixture, monkeypatch, role_id, expected_respon
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1208,7 +1210,7 @@ def test_get_all_companies(client_fixture, monkeypatch, role_id, expected_respon
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1280,7 +1282,7 @@ def test_get_company(client_fixture, monkeypatch, role_id, expected_response_sta
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1351,7 +1353,7 @@ def test_onboard_client(client_fixture, monkeypatch, role_id, expected_response_
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Company_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.CompanyMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1453,7 +1455,7 @@ def test_update_company(client_fixture, monkeypatch, role_id, expected_response_
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Company_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.CompanyMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1525,7 +1527,7 @@ def test_update_company_billing(client_fixture, monkeypatch, role_id, expected_r
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Company_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.CompanyMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1611,7 +1613,7 @@ def test_update_company_banking(client_fixture, monkeypatch, role_id, expected_r
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Company_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.CompanyMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1687,7 +1689,7 @@ def test_delete_company(client_fixture, monkeypatch, role_id, expected_response_
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Institution_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.InstitutionMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1754,7 +1756,7 @@ def test_get_institutions(client_fixture, monkeypatch, role_id, expected_respons
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.NFaceLogs_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.NFaceLogsMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1825,7 +1827,7 @@ def test_get_institution(client_fixture, monkeypatch, role_id, expected_response
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Institution_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.InstitutionMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1897,7 +1899,7 @@ def test_create_institution(client_fixture, monkeypatch, role_id, expected_respo
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Institution_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.InstitutionMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -1985,7 +1987,7 @@ def test_update_institution(client_fixture, monkeypatch, role_id, expected_respo
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Institution_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.InstitutionMF", mocked_formatter)
 
 
     # Make a request with valid credentials
@@ -2072,7 +2074,7 @@ def test_delete_institution(client_fixture, monkeypatch, role_id, expected_respo
     mocked_dumper.model_dump.return_value = mock_employee_processed
     mocked_formatter.model_validate.return_value = mocked_dumper
 
-    monkeypatch.setattr("app.api.api.Institution_MF", mocked_formatter)
+    monkeypatch.setattr("app.api.api.InstitutionMF", mocked_formatter)
 
 
     # Make a request with valid credentials

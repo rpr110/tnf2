@@ -6,7 +6,7 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy_serializer import SerializerMixin
 
-from app import database_client, config
+from app import database_client, config,logger
 
 
 metadata = MetaData()
@@ -15,6 +15,7 @@ Base = declarative_base()
 
 from unittest.mock import MagicMock
 inheritance_metaclass_dict = {} if config.env_type!="unit-test" else {"metaclass":MagicMock()}
+logger.debug(config.env_type)
 
 ############
 ## Models ##
