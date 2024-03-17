@@ -14,6 +14,9 @@ from email.message import EmailMessage
 
 import redis
 
+import bcrypt
+
+
 ##################
 ## Redis Client ##
 ##################
@@ -158,3 +161,21 @@ class OtpClient:
 
         # Commit changes to DB
         db_session.commit()
+
+
+#########################
+## Cryptography Client ##
+#########################
+
+class CryptographyClient:
+    
+    @staticmethod
+    def hash_string(_string):
+        # Hash a string for the first time
+        hashed_string = bcrypt.hashpw(_string.encode('utf-8'), bcrypt.gensalt())
+        return hashed_string
+
+    @staticmethod
+    def validate_string_against_hash(input_string, hashed_string):
+        # Check a stored string against one provided by user
+        return bcrypt.checkpw(input_string.encode('utf-8'), hashed_string)

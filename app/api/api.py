@@ -21,9 +21,8 @@ from fastapi.responses import ORJSONResponse, StreamingResponse
 
 from app.utils.dependencies import generateJwtToken, decodeJwtTokenDependancy
 from app.utils.schema import *
-from app import database_client, email_client, otp_client, redis_client, config, logger
+from app import database_client, email_client, otp_client, redis_client, CryptographyClient, config, logger
 from app.utils.models import *
-from app.utils.utils import *
 
 
 ##########
@@ -96,10 +95,10 @@ def login(
         ).filter(
             Employee.email_id == _email_id
         ).first()
-
+        
         # check if employee exists / wrong password / is active (ie. is account disabled)
         logger.info(f"[{_id}] checking if employee exists / valid password / is not deactivated")
-        if not employee_data or employee_data.password != req_body.password or not employee_data.is_active:
+        if not employee_data or  CryptographyClient.validate_string_against_hash(req_body.password, employee_data.password)  or not employee_data.is_active:
             
             logger.info(f"[{_id}] creating invalid credentials response")
             _response_message = "invalid credentials"
@@ -550,7 +549,7 @@ def create_employee(
             logger.info(f"[{_id}] create employee object")
             employee_data = Employee(
                 email_id=req_body.email_id,
-                password=req_body.password,
+                password= CryptographyClient.hash_string(req_body.password),
                 employee_name=req_body.employee_name,
                 phone_number=req_body.phone_number,
                 employee_profile_pic=req_body.employee_profile_pic,
@@ -599,7 +598,6 @@ def modify_employee(
     req_body:ModifyEmployeeDataRequest=Body(...),
     decoded_token:dict = Depends(decodeJwtTokenDependancy),
     request:Request
-
 ):
     # create request id
     _id = request.state.session_code
@@ -757,7 +755,7 @@ def update_password(
                 _status_code = status.HTTP_404_NOT_FOUND
             else:
 
-                if role_id == PortalRole.EXPLORER.value and req_body.old_password != employee_data.password:
+                if role_id == PortalRole.EXPLORER.value and not CryptographyClient.validate_string_against_hash(req_body.old_password, employee_data.password):
                     # create invalid credentials response data
                     logger.info(f"[{_id}] create invalid credentials response data")
                     _response_message = "invalid credentials"
@@ -766,7 +764,7 @@ def update_password(
                     _data = None
                     _error = BaseError(error_message=_response_message)
                     _status_code = status.HTTP_403_FORBIDDEN
-                elif req_body.new_password in (getattr(employee_data, f"password_old_{i}") for i in range(1, 13)) or req_body.new_password == employee_data.password:
+                elif any(CryptographyClient.validate_string_against_hash(req_body.new_password, employee_data.get(f"password_old_{i}")) for i in range(1, 13)) or CryptographyClient.validate_string_against_hash(req_body.new_password, employee_data.password):
                     # create 'cant update new password with old password' response data
                     logger.info(f"[{_id}] create 'cant update new password with old password' response data")
                     _response_message = "new password cannot be the same as old password"
@@ -794,7 +792,7 @@ def update_password(
 
                     # update password 
                     logger.info(f"[{_id}] update password")
-                    employee_data.password = req_body.new_password
+                    employee_data.password = CryptographyClient.hash_string(req_body.new_password)
                     session.commit()
 
                     # create response message

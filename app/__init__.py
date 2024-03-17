@@ -17,7 +17,7 @@ from fastapi.openapi.docs import get_redoc_html
 from app.logger import Rotolog
 from app.config import Settings
 
-from app.utils.clients import DatabaseClient, EmailClient, OtpClient, RedisClient
+from app.utils.clients import DatabaseClient, EmailClient, OtpClient, RedisClient, CryptographyClient
 
 ##############################
 ## Initialize config object ##
@@ -64,6 +64,7 @@ logger.debug(f"Setup EmailClient {email_client}")
 # Setup OtpClient
 otp_client = OtpClient()
 logger.debug(f"Setup OtpClient {otp_client}")
+
 
 
 ###################
