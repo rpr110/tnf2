@@ -762,9 +762,6 @@ def update_password(
                 _status_code = status.HTTP_404_NOT_FOUND
             else:
 
-                logger.debug(req_body)
-                logger.debug(employee_data)
-                logger.debug(employee_data.password)
                 if role_id == PortalRole.EXPLORER.value and not CryptographyClient.validate_string_against_hash(req_body.old_password, employee_data.password):
                     # create invalid credentials response data
                     logger.info(f"[{_id}] create invalid credentials response data")
@@ -948,173 +945,171 @@ def get_nface_logs(
 
     else:
 
-        # create session with db
-        logger.info(f"[{_id}] create db connection")
-        with database_client.Session() as session:
-            
-            # create query
-            logger.info(f"[{_id}] create query")
-            query = session.query(
-                NFaceLogs
-            )
 
-            if company_id != "all":
-                # add company_id filter to query
-                logger.info(f"[{_id}] add company_id filter to query")
-                query = query.join(
-                    Company,
-                    Company.company_id == NFaceLogs.company_id
-                ).filter(
-                    Company.public_id == company_id
+        if x_response_type not in ("csv-transaction" , "excel-transaction"):
+
+            # create session with db
+            logger.info(f"[{_id}] create db connection")
+            with database_client.Session() as session:
+                    
+                # create query
+                logger.info(f"[{_id}] create query")
+                query = session.query(
+                    NFaceLogs
                 )
-            
 
-            if status_filter != "all":
-                # add status filter to query
-                logger.info(f"[{_id}] add status filter to query")
-                query = query.join(
-                    StatusMaster,
-                    StatusMaster.status_id == NFaceLogs.status_id
-                ).filter(StatusMaster.status == status_filter.upper().strip())
+                if company_id != "all":
+                    # add company_id filter to query
+                    logger.info(f"[{_id}] add company_id filter to query")
+                    query = query.join(
+                        Company,
+                        Company.company_id == NFaceLogs.company_id
+                    ).filter(
+                        Company.public_id == company_id
+                    )
+                
 
-
-            if service_filter != "all":
-                # add service filter to query
-                logger.info(f"[{_id}] add service filter to query")
-                query = query.join(
-                    ServiceMaster,
-                    ServiceMaster.service_id == NFaceLogs.service_id
-                ).filter(ServiceMaster.service_name == service_filter.upper().strip())
-
-
-            # add datetime filter to query
-            logger.info(f"[{_id}] add datetime filter to query")
-            logger.debug(NFaceLogs)
-            logger.debug(NFaceLogs.create_date)
-            query = query.filter(NFaceLogs.create_date >= start_datetime,
-                                    NFaceLogs.create_date <= end_datetime)
-            
-            
-
-            # find total count of logs
-            logger.info(f"[{_id}] find total count of logs")
-            total_count = session.query(func.count()).select_from(NFaceLogs).scalar()
+                if status_filter != "all":
+                    # add status filter to query
+                    logger.info(f"[{_id}] add status filter to query")
+                    query = query.join(
+                        StatusMaster,
+                        StatusMaster.status_id == NFaceLogs.status_id
+                    ).filter(StatusMaster.status == status_filter.upper().strip())
 
 
-            # Pagination
-            if not x_ignore_pagination:
-                logger.info(f"[{_id}] add pagination to query")
-                offset = (page_no - 1) * items_per_page
-                query = query.order_by(NFaceLogs.create_date).offset(offset).limit(items_per_page)
+                if service_filter != "all":
+                    # add service filter to query
+                    logger.info(f"[{_id}] add service filter to query")
+                    query = query.join(
+                        ServiceMaster,
+                        ServiceMaster.service_id == NFaceLogs.service_id
+                    ).filter(ServiceMaster.service_name == service_filter.upper().strip())
 
-            # query db
-            logger.info(f"[{_id}] query db")
-            log_data = query.all()
-            logger.debug(log_data)
 
-            # format retrieved data
-            logger.info(f"[{_id}] format retrieved data")
-            log_data = [ NFaceLogsMF.model_validate(_).model_dump() for _ in log_data ]
+                # add datetime filter to query
+                logger.info(f"[{_id}] add datetime filter to query")
+                query = query.filter(NFaceLogs.create_date >= start_datetime,
+                                        NFaceLogs.create_date <= end_datetime)
+                
+                
 
-            # create response data
-            logger.info(f"[{_id}] create response data")
-            _response = PaginationResponse
-            _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
-            _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
-            _data = log_data
-            _error = None
-            _status_code = status.HTTP_200_OK
+                # find total count of logs
+                logger.info(f"[{_id}] find total count of logs")
+                total_count = session.query(func.count()).select_from(NFaceLogs).scalar()
 
-    if x_response_type == "json":
 
-        logger.info(f"[{_id}] create json response")
-        _content = _response(meta=_meta, data=_data, error=_error)
-        return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
-        
-    elif x_response_type == "csv" or x_response_type == "excel":
-        
-        # create excel response data
-        logger.info(f"[{_id}] create excel response data")
+                # Pagination
+                if not x_ignore_pagination:
+                    logger.info(f"[{_id}] add pagination to query")
+                    offset = (page_no - 1) * items_per_page
+                    query = query.order_by(NFaceLogs.create_date).offset(offset).limit(items_per_page)
 
-        csv_data = io.StringIO()
-        logger.debug(log_data)
-        csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
-        csv_writer.writeheader()
-        csv_writer.writerows(log_data)
+                # query db
+                logger.info(f"[{_id}] query db")
+                log_data = query.all()
 
-        # Create a streaming response
-        response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
-        response.headers["Content-Disposition"] = "attachment;filename=output.csv"
-        return response
-        
+                # format retrieved data
+                logger.info(f"[{_id}] format retrieved data")
+                log_data = [ NFaceLogsMF.model_validate(_).model_dump() for _ in log_data ]
 
-    elif x_response_type == "csv-transaction" or x_response_type == "transaction-excel":
+                if x_response_type == "json":
+
+                    # create response data
+                    logger.info(f"[{_id}] create response data")
+                    _response = PaginationResponse
+                    _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
+                    _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
+                    _data = log_data
+                    _error = None
+                    _status_code = status.HTTP_200_OK
+
+                elif x_response_type == "csv" or x_response_type == "excel":
+                    
+                    # create excel response data
+                    logger.info(f"[{_id}] create excel response data")
+
+                    csv_data = io.StringIO()
+                    csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
+                    csv_writer.writeheader()
+                    csv_writer.writerows(log_data)
+
+                    # Create a streaming response
+                    response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
+                    response.headers["Content-Disposition"] = "attachment;filename=output.csv"
+                    return response
+        else:
+
+            query="""
+            SELECT
+                TFW.session_code as 'Transaction ID/Ref',
+                TFW.company_name as 'Sending_institution',
+                'NIBSS' as 'Beneficiary_institution',
+                null as 'Terminal',
+                'CR' as 'Transaction Type',
+                TFW.service_name as 'Service',
+                TFW.transaction_fee as 'Transaction Amount',
+                null as 'Fee',
+                BI.vat as 'VAT Fee',
+                null as 'Platform Fee',
+                null as 'Sending_bank fee',
+                null as 'Beneficiary Bank Fee',
+                null as 'Introducer fee',
+                TFW.create_date as 'Transaction Date',
+                CBI.billing_account_name as 'Sender Account Name',
+                CBI.billing_account_number as 'Sender Account Number',
+                'NIBSS' as 'Beneficiary Account Name', 
+                null as 'Beneficiary Account Number',
+
+                TFW.*,
+                BTM.bank_type
+            FROM 
+                TransactionFeeView TFW
+            LEFT JOIN Company C on TFW.company_name = C.company_name
+            LEFT JOIN Billing_Information BI on C.company_id = BI.company_id 
+            LEFT JOIN Company_Banking_Info CBI on C.company_id=CBI.company_id
+            LEFT JOIN Bank_Type_Master BTM on CBI.company_banking_id=BTM.bank_type_id 
+
+            """
+
+            query = query + f" WHERE C.public_id='{company_id}' " if company_id != "all" else query
+
+            query = query + f" WHERE TFW.status='{status_filter.upper().strip()}' " if status_filter != "all" else query
+
+            query = query + f" WHERE TFW.service_name='{service_filter.upper().strip()}' " if service_filter != "all" else query
+
+            sd = start_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            ed = end_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            query = query + f" WHERE TFW.create_date BETWEEN '{sd}' AND '{ed}' "
+
+            query += ";"
+
+            df = pd.read_sql_query(query, database_client.engine)
+
+            # Specify the Excel file name
+            formatted_date = end_datetime.strftime("%Y%m%d")
+            excel_file_name = f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx"
+
+            # Write the DataFrame to an Excel file
+            logger.info(f"[{_id}] Write the DataFrame to an Excel file")
+            excel_bytes = io.BytesIO()
+            df.to_excel(excel_bytes, index=False)
+
+
+            # Create a streaming response for the Excel file
+            logger.info(f"[{_id}] Create a streaming response for the Excel file")
+            response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+
+            # Optionally, close the file to free up resources
+            excel_bytes.close()
+
+            # Return the streaming response
+            return response
     
-        
-        columns = ["Transaction ID/Ref","Sending_institution","Beneficiary_institution","Terminal", "Transaction Type", "Service","Transaction Amount", "Fee", "VAT Fee", "Platform Fee", "Sending_bank fee", "Beneficiary Bank Fee", "Introducer fee", "Transaction Date", "Sender Account Name", "Sender Account Number", "Beneficiary Account Name", "Beneficiary Account Number"]
-
-        formatted_date = end_datetime.strftime("%Y%m%d")
-
-
-        # Initialize a list to store rows
-        data = []
-
-        # Populate the data list with rows
-        logger.info(f"[{_id}] populate the data list with rows")
-        for idx, row in enumerate(log_data):
-
-            transaction_id_ref = row.get("session_code")
-            sending_institution = row.get("company",{}).get("company_name")
-            beneficiary_institution = "NIBSS"
-            terminal = None
-            transaction_type = "CR"
-            service=row.get("service",{}).get("service_name")
-
-            if ( row.get("service",{}).get("service_name") == "PASSIVE_LIVENESS" and row.get("status",{}).get("status") != "ISSUE"):
-                transaction_amount = 50
-            elif ( row.get("service",{}).get("service_name") == "FACE_COMPARISON" and row.get("status",{}).get("status") != "ISSUE"):
-                transaction_amount = 10
-            else:
-                transaction_amount = 0
-
-            # fee = ...
-            vat_fee = row.get("company",{}).get("billing_information",{}).get("vat", 0)
-            platform_fee = 0
-            sending_bank_fee = 0
-            beneficiary_bank_fee = 0
-            introducer_fee = 0
-            fee = transaction_amount + (vat_fee*transaction_amount)
-            transaction_date = row.get("create_date",None)
-            sender_account_name = row.get("company",{}).get("banking_information",{}).get("billing_account_name")
-            sender_account_number = row.get("company",{}).get("banking_information",{}).get("billing_account_number")
-            beneficiary_account_name = "NIBSS"
-            beneficiary_account_number = None
-
-            data.append([transaction_id_ref, sending_institution, beneficiary_institution, terminal, transaction_type, service, transaction_amount, fee, vat_fee, platform_fee, sending_bank_fee, beneficiary_bank_fee, introducer_fee, transaction_date, sender_account_name, sender_account_number, beneficiary_account_name, beneficiary_account_number])
-
-        # Create a DataFrame from the data and columns
-        logger.info(f"[{_id}] Create a DataFrame from the data and columns")
-        df = pd.DataFrame(data, columns=columns)
-
-        # Specify the Excel file name
-        excel_file_name = f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx"
-
-        # Write the DataFrame to an Excel file
-        logger.info(f"[{_id}] Write the DataFrame to an Excel file")
-        excel_bytes = io.BytesIO()
-        df.to_excel(excel_bytes, index=False)
-
-
-        # Create a streaming response for the Excel file
-        logger.info(f"[{_id}] Create a streaming response for the Excel file")
-        response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
-
-        # Optionally, close the file to free up resources
-        excel_bytes.close()
-
-        # Return the streaming response
-        return response
+    logger.info(f"[{_id}] create json response")
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
         
 
 # Stats
@@ -1246,63 +1241,57 @@ def get_invoice(
         _error = BaseError(error_message=_response_message)
         _status_code = status.HTTP_403_FORBIDDEN
     else:
-        # create session with db
-        logger.info(f"[{_id}] create db connection")
-        with database_client.Session() as session:
-            
-            # create query
-            logger.info(f"[{_id}] create query")
-            query = session.query(
-                Invoice,
-                BankTypeMaster.bank_type
-            ).join(
-                CompanyBankingInfo,
-                CompanyBankingInfo.company_id==Invoice.company_id
-            ).join(
-                BankTypeMaster,
-                BankTypeMaster.bank_type_id == CompanyBankingInfo.bank_type_id
-            )
 
-            # add bank type filter to query
-            if bank_type_filter != "all":
-                logger.info(f"[{_id}] add bank type filter to query")
-                query = query.filter(BankTypeMaster.bank_type == bank_type_filter.upper().strip())
-
-            # add company id filter to query
-            if company_id != "all":
-                logger.info(f"[{_id}] add company id filter to query")
-                query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
-
-
-            # add status filter to query
-            if status_filter != "all":
-                logger.info(f"[{_id}] add status filter to query")
-                sf = 1 if status_filter.upper().strip() == "PAID" else 0
-                query = query.filter(Invoice.payment_status == sf)
-            
-            # add datetime filter to query
-            logger.info(f"[{_id}] add datetime filter to query")
-            query = query.filter(Invoice.end_date >= start_datetime,
-                                    Invoice.end_date <= end_datetime)
-            logger.debug("done")
-            # add pagination to query
-            if not x_ignore_pagination:
-                logger.info(f"[{_id}] add pagination to query")
-                offset = (page_no - 1) * items_per_page
-                query = query.order_by(Invoice.end_date).offset(offset).limit(items_per_page)
-
-            # query db
-            logger.info(f"[{_id}] query db")
-            invoice_data = query.all()
-
-            if invoice_data:
-                # format data
-                logger.info(f"[{_id}] format retreived invoice_data")
-                invoice_data = [  InvoiceMF.model_validate(i).model_dump() for i in invoice_data  ]
-            
         if x_response_type == "json":
-            logger.info(f"[{_id}] create response data")
 
+            # create session with db
+            logger.info(f"[{_id}] create db connection")
+            with database_client.Session() as session:
+                
+                # create query
+                logger.info(f"[{_id}] create query")
+                query = session.query(
+                    Invoice
+                )
+
+                # add bank type filter to query
+                if bank_type_filter != "all":
+                    logger.info(f"[{_id}] add bank type filter to query")
+                    query = query.filter(BankTypeMaster.bank_type == bank_type_filter.upper().strip())
+
+                # add company id filter to query
+                if company_id != "all":
+                    logger.info(f"[{_id}] add company id filter to query")
+                    query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
+
+
+                # add status filter to query
+                if status_filter != "all":
+                    logger.info(f"[{_id}] add status filter to query")
+                    sf = 1 if status_filter.upper().strip() == "PAID" else 0
+                    query = query.filter(Invoice.payment_status == sf)
+                
+                # add datetime filter to query
+                logger.info(f"[{_id}] add datetime filter to query")
+                query = query.filter(Invoice.end_date >= start_datetime,
+                                        Invoice.end_date <= end_datetime)
+                # add pagination to query
+                if not x_ignore_pagination:
+                    logger.info(f"[{_id}] add pagination to query")
+                    offset = (page_no - 1) * items_per_page
+                    query = query.order_by(Invoice.end_date).offset(offset).limit(items_per_page)
+
+                # query db
+                logger.info(f"[{_id}] query db")
+                invoice_data = query.all()
+
+                if invoice_data:
+                    # format data
+                    logger.info(f"[{_id}] format retreived invoice_data")
+                    invoice_data = [  InvoiceMF.model_validate(i).model_dump() for i in invoice_data  ]
+                
+
+            logger.info(f"[{_id}] create response data")
             _response_message = None
             _response = BaseResponse
             _meta = BaseMeta(_id=_id, successful=True, message=_response_message)
@@ -1311,76 +1300,74 @@ def get_invoice(
             _status_code = status.HTTP_200_OK
 
         elif x_response_type == "csv":
-            
-            # Extract all billing dates from the query
-            logger.info(f"[{_id}] extract all billing dates from the query")
-            billing_dates = [row.get("end_date") for row in invoice_data if row.get("end_date")]
 
-            # Find the maximum billing date
-            logger.info(f"[{_id}] find the maximum billing date")
-            max_billing_date = max(billing_dates) if billing_dates else None
+            dmb_query = """
+                SELECT
+                    CBI.routing_number,
+                    CBI.product_code,
+                    CONVERT(varchar, I.end_date, 112) AS formatted_end_date,
+                    FORMAT(I.amount, 'N2') AS amount,
+                    (SELECT MAX(end_date) FROM Invoice) AS max_end_date
+                FROM Invoice I
+                LEFT JOIN Company C ON I.company_id = C.company_id
+                LEFT JOIN Company_Banking_Info CBI ON I.company_id = CBI.company_id
+            """
 
-            # Define the TXT file name with the formatted date
-            logger.info(f"[{_id}] define the TXT file name with the formatted date")
-            if max_billing_date:
-                formatted_date = datetime.datetime.strptime(max_billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
-                txt_file_name = f"N-Face_Billing_Smartdet_{formatted_date}.txt"
-            else:
-                formatted_date = ""
-                txt_file_name = "N-Face_Billing_Smartdet.txt"
+            dmb_query = dmb_query + f" WHERE C.public_id='{company_id}' " if company_id != "all" else dmb_query
 
-            max_billing_date = max(billing_dates) if billing_dates else None
+            sf = 1 if status_filter.upper().strip() == "PAID" else 0
+            dmb_query = dmb_query + f" WHERE I.payment_status='{sf}' " if status_filter != "all" else dmb_query
 
-            # Check bank_type_filter
-            logger.info(f"[{_id}] check bank_type_filter")
-            
+
+            sd = start_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            ed = end_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            dmb_query = dmb_query + f" WHERE I.create_date BETWEEN '{sd}' AND '{ed}' "
+
+            dmb_query += ";"
+
+            non_dmb_query = """
+                SELECT
+                    ROW_NUMBER() OVER (ORDER BY I.end_date) AS 'Serial_Number',
+                    CBI.billing_account_number AS 'Account_Number',
+                    CBI.sort_code AS 'Sort_Code',
+                    FORMAT(I.amount, 'N2') AS Amount,
+                    CBI.payee_beneficiary AS 'Payee_Beneficiary',
+                    'N-Face Billing' AS 'Narration',
+                    'NIBSS PLC' AS 'Payer',
+                    '' AS 'Debit_Sort_Code',
+                    '' AS 'Merchant_ID',
+                    'DR' AS 'CRDR',
+                    'NGN' AS 'Currency',
+                    '' AS 'Cust_Code',
+                    '' AS 'Beneficiary_BVN',
+                    '' AS 'Payer_BVN',
+                    I.end_date AS 'Billing_Date',
+                    (SELECT MAX(end_date) FROM Invoice) AS 'max_end_date'
+                FROM Invoice I
+                LEFT JOIN Company C ON I.company_id = C.company_id
+                LEFT JOIN Company_Banking_Info CBI ON I.company_id = CBI.company_id
+                LEFT JOIN Billing_Information BI ON I.company_id = BI.company_id
+
+            """
+
+            non_dmb_query = non_dmb_query + f" WHERE C.public_id='{company_id}' " if company_id != "all" else non_dmb_query
+
+            sf = 1 if status_filter.upper().strip() == "PAID" else 0
+            non_dmb_query = non_dmb_query + f" WHERE I.payment_status='{sf}' " if status_filter != "all" else non_dmb_query
+
+
+            sd = start_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            ed = end_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            non_dmb_query = non_dmb_query + f" WHERE I.create_date BETWEEN '{sd}' AND '{ed}' "
+
+            non_dmb_query += ";"
+
             if bank_type_filter.lower().strip() == "all":
-                dmb_columns = ["Routing_Number","product_code","Billing_date","Amount"]
-                non_dmb_columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
 
-                dmb_data = []
-                non_dmb_data = []
-                # Check bank_type_filter
-                logger.info(f"[{_id}] separate relavent dmb and non dmb data")
-                for idx, row in enumerate(invoice_data):
-                    #DMB DATA
-                    if row.get("bank_type").lower() == "dmb":
-                        routing_number = row.get("company",{}).get("banking_information",{}).get("routing_number",None)
-                        product_code = row.get("company",{}).get("banking_information",{}).get("product_code",None)
-                        billing_date = row.get("end_date",None)
-                        amount = float(row.get("amount",0))
+                dmb_df = pd.read_sql_query(dmb_query, database_client.engine)
+                non_dmb_df = pd.read_sql_query(non_dmb_query, database_client.engine)
 
-                        # Convert the date to the desired format ("yyyymmdd")
-                        formatted_billing_date = datetime.datetime.strptime(billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
-                        dmb_data.append([routing_number,product_code,formatted_billing_date,amount])
-
-                    elif row.get("bank_type").lower() == "non-dmb":
-                        #NON DMMB DATA
-                        serial_no = idx + 1
-                        account_number = row.get("company", {}).get("banking_information", {}).get("billing_account_number", None)
-                        sort_code = row.get("company", {}).get("banking_information", {}).get("sort_code", None)
-                        payee_beneficiary = row.get("company", {}).get("banking_information", {}).get("payee_beneficiary", None)
-                        amount = float(row.get("amount", 0))
-                        narration = "N-Face Billing"
-                        payer = "NIBSS PLC"
-                        debit_sort_code = ""
-                        merchant_id = ""
-                        crdr = "DR"
-                        currency = "NGN"
-                        cust_code = ""
-                        beneficiary_bvn = ""
-                        payer_bvn = ""
-                        billing_date = row.get("end_date", None)
-
-                        non_dmb_data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
-                                debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
-
-
-
-                # create dmb and non dmb df
-                logger.info(f"[{_id}] create dmb and non dmb dfs")
-                dmb_df = pd.DataFrame(dmb_data, columns=dmb_columns)
-                non_dmb_df = pd.DataFrame(non_dmb_data, columns=non_dmb_columns)
+                max_billing_date = dmb_df['column_name'].max()
                 
                 # Write both DataFrames to an Excel file with separate sheets
                 logger.info(f"[{_id}] Write both dataframes to an Excel file with separate sheets")
@@ -1399,101 +1386,62 @@ def get_invoice(
 
                 # Return the streaming response
                 return response
-
+                
             elif bank_type_filter.lower().strip() == "dmb":
-
-                # Define the columns
-                columns = ["Routing_Number", "product_code", "Billing_date", "Amount"]
                 
-                # Create a BytesIO object to store the text data as bytes
-                txt_data = io.BytesIO()
-                
-                # Write the header line with tab-separated column names
-                logger.info(f"[{_id}] Write the header line with tab-separated column names")
-                txt_data.write('\t'.join(columns).encode() + b'\n')
-                
-                # Write data to the BytesIO object and collect it in a list for future reference
-                logger.info(f"[{_id}] Write data to the BytesIO object")
-                data = []
-                for row in invoice_data:
-                    routing_number = row.get("company", {}).get("banking_information", {}).get("routing_number", None)
-                    product_code = row.get("company", {}).get("banking_information", {}).get("product_code", None)
-                    billing_date = row.get("end_date", None)
-                    amount = float(row.get("amount", 0))
+                dmb_df = pd.read_sql_query(dmb_query, database_client.engine)
+                max_billing_date = dmb_df['max_end_date'].max()
 
-                    # Convert the date to the desired format ("yyyymmdd")
-                    formatted_billing_date = datetime.datetime.strptime(billing_date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d")
+                dmb_df = dmb_df.iloc[:, :-1]
 
-                    # Write the data to the BytesIO object with tab-separated values
-                    row_data = f"{routing_number}\t{product_code}\t{formatted_billing_date}\t{amount}\n".encode()
-                    txt_data.write(row_data)
-                    data.append([routing_number, product_code, formatted_billing_date, amount])
-
-                # Reset the pointer to the beginning of the BytesIO object
-                logger.info(f"[{_id}] Reset the pointer to the beginning of the BytesIO object")
-                txt_data.seek(0)
-
-                # Create a streaming response for the TXT file
-                logger.info(f"[{_id}] Create a streaming response for the TXT file")
-                response = StreamingResponse(iter([txt_data.getvalue()]), media_type="text/plain")
-                response.headers["Content-Disposition"] = "attachment;filename=output.txt"
-
-                # Optionally, close the BytesIO object to free up resources
-                txt_data.close()
-
-                # Return the streaming response
-                return response
-
-            elif bank_type_filter.lower().strip() == "non-dmb":
-                
-                columns = ["Serial_No","Account_Number","Sort_Code","Payee_Beneficiary", "Amount", "Narration", "Payer", "Debit_Sort_Code", "Merchant_ID",  "CRDR", "Currency", "Cust_Code", "Beneficiary_BVN", "Payer_BVN", "Billing_Date"]
-
-                # Initialize a list to store rows
-                data = []
-
-                # Populate the data list with rows
-                logger.info(f"[{_id}] populate the data list with rows")
-                for idx, row in enumerate(query):
-                    serial_no = idx + 1
-                    account_number = row.get("company", {}).get("banking_information", {}).get("billing_account_number", None)
-                    sort_code = row.get("company", {}).get("banking_information", {}).get("sort_code", None)
-                    payee_beneficiary = row.get("company", {}).get("banking_information", {}).get("payee_beneficiary", None)
-                    amount = float(row.get("amount", 0))
-                    narration = "N-Face Billing"
-                    payer = "NIBSS PLC"
-                    debit_sort_code = ""
-                    merchant_id = ""
-                    crdr = "DR"
-                    currency = "NGN"
-                    cust_code = ""
-                    beneficiary_bvn = ""
-                    payer_bvn = ""
-                    billing_date = row.get("end_date", None)
-
-                    data.append([serial_no, account_number, sort_code, payee_beneficiary, amount, narration, payer,
-                                debit_sort_code, merchant_id, crdr, currency, cust_code, beneficiary_bvn, payer_bvn, billing_date])
-
-
-                # Create a DataFrame from the data and columns
-                logger.info(f"[{_id}] Create a DataFrame from the data and columns")
-                df = pd.DataFrame(data, columns=columns)
+                # Define the TXT file name with the formatted date
+                logger.info(f"[{_id}] define the TXT file name with the formatted date")
+                formatted_date = max_billing_date.strftime("%Y%m%d") if max_billing_date else ""
+                _file_name = f"N-Face_Billing_Smartdet_{formatted_date}.txt" 
 
                 # Convert the DataFrame to Excel format as bytes
                 logger.info(f"[{_id}] Convert the DataFrame to Excel format as bytes")
                 excel_bytes = io.BytesIO()
-                df.to_excel(excel_bytes, index=False)
+                dmb_df.to_csv(excel_bytes, index=False, header=False)
 
                 # Create a streaming response for the Excel file
                 logger.info(f"[{_id}] Create a streaming response for the Excel file")
-                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                response.headers["Content-Disposition"] = f"attachment;filename=N-Face_Billing_OFI_{formatted_date}.xlsx"
+                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="text/plain")
+                response.headers["Content-Disposition"] = f"attachment;filename={_file_name}"
 
-                # Optionally, close the BytesIO object to free up resources
                 excel_bytes.close()
 
                 # Return the streaming response
                 return response
 
+            elif bank_type_filter.lower().strip() == "non-dmb":
+                non_dmb_df = pd.read_sql_query(non_dmb_query, database_client.engine)
+                max_billing_date = non_dmb_df['max_end_date'].max()
+            
+                non_dmb_df = non_dmb_df.iloc[:, :-1]
+
+                # Define the TXT file name with the formatted date
+                logger.info(f"[{_id}] define the TXT file name with the formatted date")
+                formatted_date = max_billing_date.strftime("%Y%m%d") if max_billing_date else ""
+                _file_name = f"N-Face_Billing_OFI_{formatted_date}.xlsx" 
+
+
+
+                # Convert the DataFrame to Excel format as bytes
+                logger.info(f"[{_id}] Convert the DataFrame to Excel format as bytes")
+                excel_bytes = io.BytesIO()
+                non_dmb_df.to_excel(excel_bytes, index=False)
+
+                # Create a streaming response for the Excel file
+                logger.info(f"[{_id}] Create a streaming response for the Excel file")
+                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                response.headers["Content-Disposition"] = f"attachment;filename={_file_name}"
+
+                excel_bytes.close()
+
+                # Return the streaming response
+                return response
+           
     logger.info(f"[{_id}] create response")
     _content = _response(meta=_meta, data=_data, error=_error)
     return ORJSONResponse(status_code=_status_code, content=_content.model_dump())

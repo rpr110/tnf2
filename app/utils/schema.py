@@ -363,7 +363,11 @@ class InvoiceMF(FormatterModel):
 
     start_date:datetime.datetime
     end_date:datetime.datetime
-    total_non_issue_calls:int
+    total_requests:Optional[int]
+    total_non_issue_requests:Optional[int]
+    total_issue_requests:Optional[int]
+    total_success_requests:Optional[int]
+    total_failure_requests:Optional[int]
     amount:float
     payment_status:bool
     payment_date:Optional[datetime.datetime]

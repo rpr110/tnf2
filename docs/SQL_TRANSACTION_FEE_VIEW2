@@ -1,0 +1,86 @@
+
+create VIEW TransactionFeeView as
+
+WITH CTE1 AS (
+    SELECT
+        nl.*,
+        bi.billing_start_date,
+        CASE 
+            WHEN UPPER(bf.billing_frequency) = 'YEARLY' THEN DATEDIFF(year, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'QUARTERLY' THEN DATEDIFF(quarter, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'MONTHLY' THEN DATEDIFF(month, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'BI-WEEKLY' THEN (DATEDIFF(week, bi.billing_start_date, nl.create_date) / 2) + 1
+            WHEN UPPER(bf.billing_frequency) = 'WEEKLY' THEN DATEDIFF(week, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'DAILY' THEN DATEDIFF(day, bi.billing_start_date, nl.create_date) + 1
+        END AS cycle_number,
+        bi.billing_id,
+        bi.billing_frequency_id,
+        bf.billing_frequency
+    FROM
+        dbo.Nface_Logs nl
+    JOIN
+        dbo.Billing_Information bi ON nl.company_id = bi.company_id
+    JOIN
+        dbo.Billing_Frequency_Master bf ON bi.billing_frequency_id = bf.billing_frequency_id
+), BillingCTE AS (
+    SELECT 
+        *,
+        ROW_NUMBER() OVER (PARTITION BY company_id, cycle_number ORDER BY CTE1.create_date) AS rownumber,
+        CASE 
+            WHEN CTE1.billing_frequency = 'YEARLY' THEN DATEADD(YEAR, cycle_number - 1, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'QUARTERLY' THEN DATEADD(QUARTER, cycle_number - 1, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'MONTHLY' THEN DATEADD(MONTH, cycle_number - 1, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'BI-WEEKLY' THEN DATEADD(WEEK, (cycle_number - 1) * 2, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'WEEKLY' THEN DATEADD(WEEK, cycle_number - 1, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'DAILY' THEN DATEADD(DAY, cycle_number - 1, CTE1.billing_start_date)
+        END AS cycle_start,
+        CASE 
+            WHEN CTE1.billing_frequency = 'YEARLY' THEN DATEADD(YEAR, cycle_number, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'QUARTERLY' THEN DATEADD(QUARTER, cycle_number, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'MONTHLY' THEN DATEADD(MONTH, cycle_number, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'BI-WEEKLY' THEN DATEADD(WEEK, cycle_number * 2, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'WEEKLY' THEN DATEADD(WEEK, cycle_number, CTE1.billing_start_date)
+            WHEN CTE1.billing_frequency = 'DAILY' THEN DATEADD(DAY, cycle_number, CTE1.billing_start_date)
+        END AS cycle_end
+    FROM 
+        CTE1
+), TransactionFeeCTE AS (
+    SELECT
+        BillingCTE.*,
+        COALESCE(vt.rate, 10) AS transaction_fee  
+    FROM
+        BillingCTE
+    OUTER APPLY (
+        SELECT TOP 1 rate
+        FROM Volume_Tariff
+        WHERE billing_id = BillingCTE.billing_id AND BillingCTE.rownumber BETWEEN min_volume AND max_volume
+        ORDER BY max_volume DESC
+    ) vt
+)
+SELECT
+    C.company_name,
+    SeM.service_name,
+    StM.status,
+    TFCTE.public_id AS nface_logs_public_id,
+    TFCTE.session_code,
+    TFCTE.endpoint,
+    TFCTE.user_id,
+    TFCTE.status_code,
+    TFCTE.ip_address,
+    TFCTE.output,
+    TFCTE.execution_time,
+    TFCTE.user_image,
+    TFCTE.cycle_number,
+    TFCTE.rownumber AS request_number,
+    TFCTE.transaction_fee,
+    TFCTE.create_date,
+    TFCTE.cycle_start,
+    TFCTE.cycle_end
+FROM
+    TransactionFeeCTE TFCTE
+LEFT JOIN 
+    Company C ON TFCTE.company_id = C.company_id
+LEFT JOIN
+    Service_Master SeM ON TFCTE.service_id = SeM.service_id
+LEFT JOIN
+    Status_Master StM ON TFCTE.status_id = StM.status_id;

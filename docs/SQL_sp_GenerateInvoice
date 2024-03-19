@@ -1,0 +1,80 @@
+
+-- CREATE PROCEDURE sp_generateAndCreateInvoice
+-- AS
+-- BEGIN
+--     SET NOCOUNT ON;
+
+--     -- Start a transaction
+--     BEGIN TRANSACTION;
+
+--     -- Temporary table to hold the data to be inserted
+--     CREATE TABLE #TempInvoice (
+--         company_id INT,
+--         start_date DATE,
+--         end_date DATE,
+--         total_requests INT,
+--         amount DECIMAL(18, 2),
+--         total_non_issue_requests INT,
+--         total_issue_requests INT,
+--         total_success_requests INT,
+--         total_failure_requests INT
+--     );
+
+--     -- Insert data into temporary table
+--     INSERT INTO #TempInvoice (company_id, start_date, end_date, total_requests, amount, total_non_issue_requests, total_issue_requests, total_success_requests, total_failure_requests)
+--     SELECT
+--         C.company_id,
+--         TFW.cycle_start AS start_date,
+--         TFW.cycle_end AS end_date,
+--         COUNT(TFW.request_number) AS total_requests,
+--         SUM(TFW.transaction_fee) AS amount,
+--         COUNT(CASE WHEN TFW.status != 'ISSUE' THEN TFW.request_number ELSE NULL END) AS total_non_issue_requests,
+--         COUNT(CASE WHEN TFW.status = 'ISSUE' THEN TFW.request_number ELSE NULL END) AS total_issue_requests,
+--         COUNT(CASE WHEN TFW.status = 'SUCCESS' THEN TFW.request_number ELSE NULL END) AS total_success_requests,
+--         COUNT(CASE WHEN TFW.status = 'FAILURE' THEN TFW.request_number ELSE NULL END) AS total_failure_requests
+--     FROM 
+--         TransactionFeeView TFW
+--     INNER JOIN 
+--         Company C ON TFW.company_name = C.company_name
+--     GROUP BY 
+--         C.company_id, TFW.cycle_start, TFW.cycle_end;
+
+--     -- Insert records into Invoice table based on certain conditions
+--     INSERT INTO Invoice (company_id, start_date, end_date, total_requests, amount, total_non_issue_requests, total_issue_requests, total_success_requests, total_failure_requests)
+--     SELECT
+--         T.company_id,
+--         T.start_date,
+--         T.end_date,
+--         T.total_requests,
+--         T.amount,
+--         T.total_non_issue_requests,
+--         T.total_issue_requests,
+--         T.total_success_requests,
+--         T.total_failure_requests
+--     FROM 
+--         #TempInvoice T
+--     WHERE NOT EXISTS (
+--             SELECT 1
+--             FROM Invoice I
+--             WHERE I.company_id = T.company_id
+--               AND I.start_date = T.start_date
+--               AND I.end_date = T.end_date
+--         )
+--         OR T.end_date <= GETDATE();
+
+--     -- Rollback the transaction if there's any error
+--     IF @@ERROR <> 0
+--     BEGIN
+--         ROLLBACK TRANSACTION;
+--         PRINT 'Rolling back changes.';
+--     END
+--     ELSE
+--     BEGIN
+--         -- Commit the transaction if everything is fine
+--         COMMIT TRANSACTION;
+--         PRINT 'Transaction committed successfully.';
+--     END
+
+--     -- Drop the temporary table
+--     DROP TABLE #TempInvoice;
+-- END

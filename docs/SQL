@@ -1,0 +1,28 @@
+
+-- Get NFace Logs With Billing Cyce Along With Transaction split by billing cycle
+WITH CTE AS (
+    SELECT
+        nl.public_id AS nface_public_id,
+        nl.company_id,
+        nl.create_date,
+        CASE 
+            WHEN UPPER(bf.billing_frequency) = 'YEARLY' THEN DATEDIFF(year, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'QUARTERLY' THEN DATEDIFF(quarter, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'MONTHLY' THEN DATEDIFF(month, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'BI-WEEKLY' THEN (DATEDIFF(week, bi.billing_start_date, nl.create_date) / 2) + 1
+            WHEN UPPER(bf.billing_frequency) = 'WEEKLY' THEN DATEDIFF(week, bi.billing_start_date, nl.create_date) + 1
+            WHEN UPPER(bf.billing_frequency) = 'DAILY' THEN DATEDIFF(day, bi.billing_start_date, nl.create_date) + 1
+            -- Add more cases for other billing frequencies if needed
+        END AS cycle_number
+    FROM
+        dbo.Nface_Logs nl
+    JOIN
+        dbo.Billing_Information bi ON nl.company_id = bi.company_id
+    JOIN
+        dbo.Billing_Frequency_Master bf ON bi.billing_frequency_id = bf.billing_frequency_id
+)
+SELECT
+    *,
+    ROW_NUMBER() OVER (PARTITION BY company_id, cycle_number ORDER BY create_date) AS rownumber
+FROM
+    CTE;

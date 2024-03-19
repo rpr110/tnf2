@@ -14,7 +14,7 @@ metadata.reflect(bind=database_client.engine)
 Base = declarative_base()
 
 from unittest.mock import MagicMock
-inheritance_metaclass_dict = {} if config.env_type!="unit-test" else {"metaclass":MagicMock()}
+inheritance_metaclass_dict = {}  if config.env_type!="unit-test" else {"metaclass":MagicMock()}
 logger.debug(config.env_type)
 
 ############
@@ -60,7 +60,6 @@ class BillingInformation(Base, SerializerMixin, **inheritance_metaclass_dict):
     billing_mode_type = relationship("BillingModeTypeMaster")
     institution = relationship("Institution")
     volume_tariff = relationship("VolumeTariff")
-    #company
 
 class Company(Base, SerializerMixin, **inheritance_metaclass_dict):
     __table__ = metadata.tables['Company']
@@ -70,9 +69,6 @@ class Company(Base, SerializerMixin, **inheritance_metaclass_dict):
 
 class Roles(Base, SerializerMixin, **inheritance_metaclass_dict):
     __table__ = metadata.tables['Roles']
-    # __table_args__ = (UniqueConstraint('company_id', 'role_name', name='_company_role_uc'),)
-
-
 
 class Employee(Base, SerializerMixin, **inheritance_metaclass_dict):
     __table__ = metadata.tables['Employee']
@@ -94,7 +90,6 @@ class Invoice(Base, SerializerMixin, **inheritance_metaclass_dict):
 
 class CompanyBankingInfo(Base, SerializerMixin, **inheritance_metaclass_dict):
     __table__ = metadata.tables["Company_Banking_Info"]
-    # company = relationship("Company")
     bank_type = relationship("BankTypeMaster")
     __mapper_args__ = { 'primary_key': [metadata.tables["Company_Banking_Info"].c.company_id] }
 

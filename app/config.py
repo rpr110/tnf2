@@ -67,8 +67,3 @@ class Settings(BaseSettings):
         "unauthorized":"unauthorized"
     })()
     
-
-
-
-config = Settings()
-print(config.messages.invalid_credentials)
