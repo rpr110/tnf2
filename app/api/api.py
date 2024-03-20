@@ -1366,8 +1366,6 @@ def get_invoice(
 
                 dmb_df = pd.read_sql_query(dmb_query, database_client.engine)
                 non_dmb_df = pd.read_sql_query(non_dmb_query, database_client.engine)
-
-                max_billing_date = dmb_df['max_end_date'].max() if not dmb_df.empty else None
                 
                 # Write both DataFrames to an Excel file with separate sheets
                 logger.info(f"[{_id}] Write both dataframes to an Excel file with separate sheets")

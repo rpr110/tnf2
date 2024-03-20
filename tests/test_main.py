@@ -536,13 +536,11 @@ def test_update_password(client_fixture, monkeypatch, role_id, employee_not_foun
 
     # Create MagicMock instances for each intermediate object in the chain
     mock_query = MagicMock()
-    mock_options = MagicMock()
     mock_filter = MagicMock()
     mock_first = MagicMock()
 
     # Set the return_value attribute for each intermediate MagicMock object
     monkeypatch.setattr(database_client.Session.return_value.__enter__.return_value, "query", mock_query)
-    # monkeypatch.setattr(mock_query.return_value, "options", mock_options)
     monkeypatch.setattr(mock_query.return_value, "filter", mock_filter)
     monkeypatch.setattr(mock_filter.return_value, "first", mock_first)
 
@@ -1694,7 +1692,6 @@ def test_delete_company(client_fixture, monkeypatch, role_id, expected_response_
 
 
     # Make a request with valid credentials
-    data= {}
     headers = {
         "x-access-token":"abc",
     }
@@ -2079,7 +2076,6 @@ def test_delete_institution(client_fixture, monkeypatch, role_id, expected_respo
 
 
     # Make a request with valid credentials
-    data= {}
     headers = {
         "x-access-token":"abc",
     }

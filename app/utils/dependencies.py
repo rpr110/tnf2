@@ -48,7 +48,7 @@ async def decode_jwt_token_dependancy(*, token:str=Header(...,alias="x-access-to
         decoded_token = decode_jwt_token(token)
         return decoded_token
     except Exception as e:
-        logger.info(f"[{_id}] invalid jwt")
+        logger.info(f"[{_id}] invalid jwt {e}")
         _content = BaseResponse(
             meta=BaseMeta(
                 _id="",
