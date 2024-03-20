@@ -98,10 +98,6 @@ class DatabaseClient:
         self.Session = sessionmaker(bind=self.engine)
 
 
-    def close_connection(self):
-        self.session.close()
-        self.engine.dispose()
-
 
 ##################
 ## Email Client ##
