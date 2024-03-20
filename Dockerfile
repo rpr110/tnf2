@@ -1,6 +1,4 @@
 FROM python:3.8-slim-buster
-#FROM python:3.11
-
 
 # build variables.
 ENV DEBIAN_FRONTEND noninteractive
@@ -21,7 +19,8 @@ RUN apt-get update && \
 # install Microsoft SQL Server requirements.
 ENV ACCEPT_EULA=Y
 RUN apt-get update -y && apt-get update \
-  && apt-get install -y --no-install-recommends curl gcc g++ gnupg unixodbc-dev
+  && apt-get install -y --no-install-recommends curl gcc g++ gnupg unixodbc-dev \
+  && apt-get clean
 
 # Add SQL Server ODBC Driver 17 for Ubuntu 18.04
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
@@ -29,22 +28,25 @@ RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
   && apt-get update \
   && apt-get install -y --no-install-recommends --allow-unauthenticated msodbcsql17 mssql-tools \
   && echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bash_profile \
-  && echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+  && echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc \
+  && apt-get clean
 
-# clean the install.
-RUN apt-get -y clean
-
+# Set work directory
 WORKDIR /home/calcot/nface
 
+# Copy requirements and install Python packages
 COPY requirements.txt requirements.txt
-# upgrade pip and install requirements.
 RUN pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install -r requirements.txt \
+    && rm -rf /root/.cache/pip/*
 
+# Copy the application code
 COPY app app
 COPY logs logs
 COPY run.py run.py
+
+# Expose port
 EXPOSE 8000
 
-CMD ["python","run.py"]
-# CMD ["gunicorn", "run:app", "-w", "3", "--worker-class", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000","--timeout","600"]
+# Set the default command to run the application
+CMD ["python", "run.py"]
