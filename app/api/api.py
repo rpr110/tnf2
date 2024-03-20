@@ -35,6 +35,7 @@ from app.utils.schema import PortalRole, BaseMeta, BaseError, BaseResponse, Toke
 
 from app import database_client, email_client, otp_client, redis_client, CryptographyClient, config, logger
 from app.utils.models import CurrencyMaster, StatusMaster, ServiceMaster, BankTypeMaster, BillingModeTypeMaster, BillingFrequencyMaster, VerificationCode, Wallet, VolumeTariff, Institution, BillingInformation, Company, Roles, Employee, NFaceLogs, Invoice, CompanyBankingInfo
+from app.utils.utils import generate_unauthorized_message_components
 
 ##########
 ## APIs ##
@@ -110,14 +111,8 @@ def login(
         # check if employee exists / wrong password / is active (ie. is account disabled)
         logger.info(f"[{_id}] checking if employee exists / valid password / is not deactivated")
         if not req_body.msauth_token and (not employee_data or not CryptographyClient.validate_string_against_hash(req_body.password, employee_data.password) or not employee_data.is_active ):
-            
-            logger.info(f"[{_id}] creating invalid credentials response")
-            _response_message = config.messages.invalid_credentials
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_401_UNAUTHORIZED
+    
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_401_UNAUTHORIZED)
 
         else:        
 
@@ -180,13 +175,7 @@ def forgot_password(
         logger.info(f"[{_id}] checking if employee exists / is not deactivated")
         if not employee_data or not employee_data.is_active:
 
-            logger.info(f"[{_id}] creating invalid credentials response")
-            _response_message = config.messages.invalid_credentials
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_401_UNAUTHORIZED
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_401_UNAUTHORIZED)
         else:
             # Create Verification code
             logger.info(f"[{_id}] creating verification code")
@@ -242,13 +231,7 @@ def reset_password(
         verification_code_is_expired = ( datetime.datetime.now(pytz.utc) - verification_code_data.create_date.astimezone(pytz.utc) > datetime.timedelta(minutes=5) )
         if not verification_code_data or verification_code_is_expired or verification_code_data._code != req_body.code:
 
-            logger.info(f"[{_id}] creating invalid credentials response")
-            _response_message = config.messages.invalid_credentials
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_401_UNAUTHORIZED
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_401_UNAUTHORIZED)
 
         else:
 
@@ -409,13 +392,7 @@ def get_all_employees(
 
     else:
         # create unauthorized response data
-        logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message= _response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     # create response
     logger.info(f"[{_id}] create response")
@@ -440,13 +417,7 @@ def get_employee(
 
     logger.info(f"[{_id}] check if user is authorized to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole)  :
-        logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     else:
 
@@ -543,13 +514,7 @@ def create_employee(
         # cheeck if role is valid or admin using differnt cid
         logger.info(f"[{_id}] check if user is authorised to use this endpoint")
         if ( role_id not in (PortalRole.SUPER_ADMIN.value, PortalRole.ADMIN.value) ) or (role_id == PortalRole.ADMIN.value and decoded_token.get("cid") != company_data.public_id):
-            logger.info(f"[{_id}] create unathorized response data")
-            _response_message = config.messages.unauthorized
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_403_FORBIDDEN
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
         else:
             # create employee object
@@ -615,13 +580,7 @@ def modify_employee(
     # check if user has permission to use this endpoint
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  (role_id == PortalRole.EXPLORER.value and employee_id != decoded_token.get("uid")):
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     else:
         # create session with db
@@ -710,13 +669,7 @@ def update_password(
     # check if user has permission to use this endpoint
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  (role_id == PortalRole.EXPLORER.value and employee_id != decoded_token.get("uid")):
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     else:
         # create session with db
@@ -834,13 +787,7 @@ def delete_employee(
     # check if user has permission to use this endpoint
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (PortalRole.SUPER_ADMIN.value, PortalRole.ADMIN.value) :
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     else:
         # create session with db
@@ -935,13 +882,7 @@ def get_nface_logs(
     # check if user has permission to use this endpoint
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     else:
 
@@ -1131,13 +1072,7 @@ def get_nface_stats(
     # check if user has permission to use this endpoint
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # create session with db
@@ -1233,13 +1168,8 @@ def get_invoice(
     # check if user has permission to use this endpoint
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) or (company_id != "all" and role_id != PortalRole.SUPER_ADMIN.value ):
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
+
     else:
 
         if x_response_type == "json":
@@ -1465,13 +1395,7 @@ def get_invoice_stats(
     # check if user has permission to use this endpoint
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) or (company_id != "all" and role_id != PortalRole.SUPER_ADMIN.value ):
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
         # create session with db
         logger.info(f"[{_id}] create db connection")
@@ -1550,13 +1474,7 @@ def bank_type(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -1612,13 +1530,7 @@ def billing_frequency(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -1676,13 +1588,7 @@ def billing_mode_type(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -1745,13 +1651,7 @@ def get_all_companies(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -1819,13 +1719,7 @@ def get_company(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -1892,13 +1786,7 @@ def onboard_client(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -2079,13 +1967,7 @@ def update_company(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -2164,13 +2046,7 @@ def update_company_billing(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -2287,13 +2163,7 @@ def update_company_banking(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -2374,13 +2244,7 @@ def delete_company(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -2458,13 +2322,7 @@ def wallet(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if not (role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value): # SUPER ADMIN
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -2533,13 +2391,7 @@ async def load_wallet(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if role_id == PortalRole.EXPLORER.value: # SUPER ADMIN
         # create unathorized response data
-        logger.info(f"[{_id}] create unathorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
     else:
 
         # check if user has permission to use this endpoint
@@ -2655,13 +2507,7 @@ def institutions(
 
     else:
         # create unauthorized response data
-        logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     # create response
     logger.info(f"[{_id}] create response")
@@ -2723,13 +2569,7 @@ def institution(
 
     else:
         # create unauthorized response data
-        logger.info(f"[{_id}] create unauthorized response data")
-        _response_message = config.messages.unauthorized
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-        _data = None
-        _error = BaseError(error_message=_response_message)
-        _status_code = status.HTTP_403_FORBIDDEN
+        _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     # create  response 
     logger.info(f"[{_id}] create  response ")    
@@ -2772,13 +2612,7 @@ def create_institution(
         if ( role_id not in (PortalRole.SUPER_ADMIN.value) ):
 
             # create unauthorized response data
-            logger.info(f"[{_id}] create unauthorized response data")
-            _response_message = config.messages.unauthorized
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_403_FORBIDDEN
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
         else:
             # create institution object
@@ -2872,12 +2706,7 @@ def update_institution(
         # create unauthorized response data
         logger.info(f"[{_id}] create unauthorized response data")
         if role_id != PortalRole.SUPER_ADMIN.value:
-            _response_message = config.messages.unauthorized
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_403_FORBIDDEN
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
         else:
             # retrieve the institution to be updated
             logger.info(f"[{_id}] retrieve the institution to be updated")
@@ -2976,13 +2805,7 @@ def delete_institution(
         logger.info(f"[{_id}] check if user has permission")
         if role_id != PortalRole.SUPER_ADMIN.value:
             # create unauthorized response data
-            logger.info(f"[{_id}] create unauthorized response data")
-            _response_message = config.messages.unauthorized
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_403_FORBIDDEN
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
         else:
             # retrieve the institution to be deleted
             logger.info(f"[{_id}] retrieve the institution to be deleted")
@@ -3042,13 +2865,7 @@ def volume_tariff(
         logger.info(f"[{_id}] check if user has permission")
         if role_id != PortalRole.SUPER_ADMIN.value:
             # create unauthorized response data
-            logger.info(f"[{_id}] create unauthorized response data")
-            _response_message = config.messages.unauthorized
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-            _data = None
-            _error = BaseError(error_message=_response_message)
-            _status_code = status.HTTP_403_FORBIDDEN
+            _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
         else:
 
             # filter billing information
