@@ -10,3 +10,11 @@ def generate_unauthorized_message_components(logger, config, response_class, met
 
     return _response_message, _response, _meta, _data, _error, _status_code
 
+
+def get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, orjson_response_class):
+    # create response
+    logger.info(f"[{_id}] create response")
+    _content = _response(meta=_meta, data=_data, error=_error)
+    return orjson_response_class(status_code=_status_code, content=_content.model_dump())
+    
+ 

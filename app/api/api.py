@@ -35,7 +35,7 @@ from app.utils.schema import PortalRole, BaseMeta, BaseError, BaseResponse, Toke
 
 from app import database_client, email_client, otp_client, redis_client, CryptographyClient, config, logger
 from app.utils.models import CurrencyMaster, StatusMaster, ServiceMaster, BankTypeMaster, BillingModeTypeMaster, BillingFrequencyMaster, VerificationCode, Wallet, VolumeTariff, Institution, BillingInformation, Company, Roles, Employee, NFaceLogs, Invoice, CompanyBankingInfo
-from app.utils.utils import generate_unauthorized_message_components
+from app.utils.utils import generate_unauthorized_message_components, get_orjson_response
 
 ##########
 ## APIs ##
@@ -141,9 +141,7 @@ def login(
             redis_client.set_data(key=jwt_token, value=employee_data.get("email_id"), ttl=100000)
 
     # construct response
-    logger.info(f"[{_id}] constructing response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
 @api.post("/forgot_password")
@@ -196,9 +194,7 @@ def forgot_password(
             _error = None
             _status_code = status.HTTP_200_OK
 
-    logger.info(f"[{_id}] creating response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
 @api.post("/reset_password")
@@ -258,9 +254,7 @@ def reset_password(
             _error = None
             _status_code = status.HTTP_200_OK
 
-    logger.info(f"[{_id}] creating response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 #############
@@ -310,9 +304,7 @@ def get_roles(
     _error = None
     _status_code = status.HTTP_200_OK
 
-    logger.info(f"[{_id}] creating response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
     
 @api.get("/employees")
@@ -395,9 +387,7 @@ def get_all_employees(
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 @api.get("/employee/{employee_id}")
@@ -483,9 +473,7 @@ def get_employee(
                 _status_code = status.HTTP_404_NOT_FOUND
 
 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 @api.post("/employee")
@@ -558,9 +546,8 @@ def create_employee(
                 _error = BaseError(error_message=_response_message)
                 _status_code = status.HTTP_400_BAD_REQUEST
 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 @api.put("/employee/{employee_id}")
@@ -647,9 +634,8 @@ def modify_employee(
                 _error = None
                 _status_code = status.HTTP_200_OK
 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 @api.put("/employee/{employee_id}/update_password")
@@ -767,9 +753,8 @@ def update_password(
                 logger.info(f"[{_id}] delete first login flag from redis")
                 redis_client.delete_key(f"NEW_{employee_data.public_id}")
 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 @api.delete("/employee/{employee_id}")
 def delete_employee(
@@ -846,9 +831,8 @@ def delete_employee(
                 _error = None
                 _status_code = status.HTTP_200_OK
 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 ###############
@@ -1048,9 +1032,8 @@ def get_nface_logs(
             # Return the streaming response
             return response
     
-    logger.info(f"[{_id}] create json response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
         
 
 # Stats
@@ -1137,9 +1120,8 @@ def get_nface_stats(
             _error = None
             _status_code = status.HTTP_200_OK
 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
 # Invoice
@@ -1370,9 +1352,7 @@ def get_invoice(
                 # Return the streaming response
                 return response
            
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
 # Invoice
@@ -1447,9 +1427,7 @@ def get_invoice_stats(
         _error = None
         _status_code = status.HTTP_200_OK
 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
         
 
 ####################
@@ -1508,9 +1486,7 @@ def bank_type(
             _status_code = status.HTTP_200_OK
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 @api.get("/billing_frequency")
 def billing_frequency(
@@ -1565,9 +1541,7 @@ def billing_frequency(
 
     
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 @api.get("/billing_mode_type")
@@ -1622,9 +1596,7 @@ def billing_mode_type(
             _status_code = status.HTTP_200_OK
     
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 # CRUD Company
@@ -1696,9 +1668,7 @@ def get_all_companies(
             _status_code = status.HTTP_200_OK
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 @api.get("/company/{company_id}")
 def get_company(
@@ -1764,9 +1734,7 @@ def get_company(
                 _status_code = status.HTTP_404_NOT_FOUND
     
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 # Onboard Client
 @api.post("/register_client")
@@ -1822,9 +1790,7 @@ def onboard_client(
                 _status_code = status.HTTP_400_BAD_REQUEST
     
                 # create response
-                logger.info(f"[{_id}] create response")
-                _content = _response(meta=_meta, data=_data, error=_error)
-                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+                return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
             # load billing data
             logger.info(f"[{_id}] load billing data")
@@ -1942,10 +1908,9 @@ def onboard_client(
         _data = company_data
         _error = None
         _status_code = status.HTTP_200_OK
+
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 # # Update Company /company /company/billing /company/banking
@@ -2000,9 +1965,7 @@ def update_company(
                 _status_code = status.HTTP_400_BAD_REQUEST
     
                 # create response
-                logger.info(f"[{_id}] create response")
-                _content = _response(meta=_meta, data=_data, error=_error)
-                return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+                return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
             # commit data
@@ -2022,9 +1985,7 @@ def update_company(
         _error = None
         _status_code = status.HTTP_200_OK
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 
@@ -2139,9 +2100,7 @@ def update_company_billing(
             _status_code = status.HTTP_200_OK
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 
 @api.put("/company/{company_id}/banking")
@@ -2221,9 +2180,7 @@ def update_company_banking(
             _status_code = status.HTTP_200_OK
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 # Delete Company
 @api.delete("/company/{company_id}")
@@ -2298,9 +2255,7 @@ def delete_company(
                 _status_code = status.HTTP_200_OK
     
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
 # Wallet
@@ -2364,9 +2319,7 @@ def wallet(
             _status_code = status.HTTP_404_NOT_FOUND
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
 @api.post("/company/{company_id}/wallet/load_wallet")
@@ -2436,9 +2389,7 @@ async def load_wallet(
                 _status_code = status.HTTP_404_NOT_FOUND
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 
 # Institution
@@ -2510,9 +2461,7 @@ def institutions(
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 # GET Institution
 @api.get("/institution/{institution_id}")
@@ -2572,9 +2521,7 @@ def institution(
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
 
     # create  response 
-    logger.info(f"[{_id}] create  response ")    
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 # POST Institution
 
@@ -2679,9 +2626,7 @@ def create_institution(
                 _status_code = status.HTTP_400_BAD_REQUEST
 
     # create response 
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
     
 # PUT Institution
 @api.put("/institution/{institution_id}")
@@ -2779,9 +2724,7 @@ def update_institution(
                 _status_code = status.HTTP_404_NOT_FOUND
     
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 # Delete INSTITUTIon
 @api.delete("/institution/{institution_id}")
@@ -2837,9 +2780,7 @@ def delete_institution(
                 _status_code = status.HTTP_404_NOT_FOUND
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
 # volume tarrif
 @api.post("/volume_tariff")
@@ -2916,7 +2857,5 @@ def volume_tariff(
                 _status_code = status.HTTP_404_NOT_FOUND
 
     # create response
-    logger.info(f"[{_id}] create response")
-    _content = _response(meta=_meta, data=_data, error=_error)
-    return ORJSONResponse(status_code=_status_code, content=_content.model_dump())
+    return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
