@@ -66,4 +66,5 @@ class Settings(BaseSettings):
         "invalid_credentials": "invalid credentials",
         "unauthorized":"unauthorized"
     })()
-    
+
+    mock_model_metaclass:typing.Optional[bool]=False

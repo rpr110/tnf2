@@ -2,6 +2,7 @@
 ## Imports ##
 #############
 
+import os
 import datetime
 
 import pytest
@@ -65,17 +66,17 @@ def client_fixture(monkeypatch):
     # Patch requests delete
     monkeypatch.setattr(requests, "delete", MagicMock())
 
+    os.environ['mock_model_metaclass'] = "true"
+
     from app import app, database_client, email_client, otp_client, redis_client, config
     from app.utils.dependencies import decode_jwt_token_dependancy
     from app.utils.schema import PortalRole
-
-    config.env_type="unit-test"
 
 
     with TestClient(app) as client:
         yield client
 
-    config.env_type="prod"
+    os.environ['mock_model_metaclass'] = "false"
 
 SUPER_ADMIN_ID = "ECE70147-BE8A-43E4-9E19-350B8EC2DB8A"
 ADMIN_ID = "6E5D878B-FC83-4508-988B-1D40D54EB1DA"

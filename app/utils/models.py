@@ -14,8 +14,7 @@ metadata.reflect(bind=database_client.engine)
 Base = declarative_base()
 
 from unittest.mock import MagicMock
-inheritance_metaclass_dict = {}  if config.env_type!="unit-test" else {"metaclass":MagicMock()}
-logger.debug(config.env_type)
+inheritance_metaclass_dict = {}  if not config.mock_model_metaclass else {"metaclass":MagicMock()}
 
 ############
 ## Models ##

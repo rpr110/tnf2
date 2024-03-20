@@ -1367,7 +1367,7 @@ def get_invoice(
                 dmb_df = pd.read_sql_query(dmb_query, database_client.engine)
                 non_dmb_df = pd.read_sql_query(non_dmb_query, database_client.engine)
 
-                max_billing_date = dmb_df['column_name'].max()
+                max_billing_date = dmb_df['max_end_date'].max() if not dmb_df.empty else None
                 
                 # Write both DataFrames to an Excel file with separate sheets
                 logger.info(f"[{_id}] Write both dataframes to an Excel file with separate sheets")
@@ -1390,9 +1390,9 @@ def get_invoice(
             elif bank_type_filter.lower().strip() == "dmb":
                 
                 dmb_df = pd.read_sql_query(dmb_query, database_client.engine)
-                max_billing_date = dmb_df['max_end_date'].max()
+                max_billing_date = dmb_df['max_end_date'].max() if not dmb_df.empty else None
 
-                dmb_df = dmb_df.iloc[:, :-1]
+                dmb_df = dmb_df.iloc[:, :-1] if not dmb_df.empty else dmb_df
 
                 # Define the TXT file name with the formatted date
                 logger.info(f"[{_id}] define the TXT file name with the formatted date")
@@ -1416,9 +1416,9 @@ def get_invoice(
 
             elif bank_type_filter.lower().strip() == "non-dmb":
                 non_dmb_df = pd.read_sql_query(non_dmb_query, database_client.engine)
-                max_billing_date = non_dmb_df['max_end_date'].max()
+                max_billing_date = non_dmb_df['max_end_date'].max()  if not non_dmb_df.empty else None
             
-                non_dmb_df = non_dmb_df.iloc[:, :-1]
+                non_dmb_df = non_dmb_df.iloc[:, :-1]  if not non_dmb_df.empty else  non_dmb_df
 
                 # Define the TXT file name with the formatted date
                 logger.info(f"[{_id}] define the TXT file name with the formatted date")
