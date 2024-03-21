@@ -1164,6 +1164,12 @@ def get_invoice(
                 logger.info(f"[{_id}] create query")
                 query = session.query(
                     Invoice
+                ).join(
+                    CompanyBankingInfo,
+                    CompanyBankingInfo.company_id==Invoice.company_id
+                ).join(
+                    BankTypeMaster,
+                    BankTypeMaster.bank_type_id == CompanyBankingInfo.bank_type_id
                 )
 
                 # add bank type filter to query
