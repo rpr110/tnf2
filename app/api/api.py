@@ -1224,7 +1224,7 @@ def get_invoice(
                     CBI.routing_number,
                     CBI.product_code,
                     CONVERT(varchar, I.end_date, 112) AS formatted_end_date,
-                    FORMAT(I.amount, 'N2') AS amount,
+                    FORMAT(I.amount, '0.00') AS amount,
                     (SELECT MAX(end_date) FROM Invoice) AS max_end_date
                 FROM Invoice I
                 LEFT JOIN Company C ON I.company_id = C.company_id
