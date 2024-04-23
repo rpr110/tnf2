@@ -64,7 +64,13 @@ class Settings(BaseSettings):
     # Constant Messages
     messages:typing.Optional[typing.Any] = type('MESSAGES', (), {
         "invalid_credentials": "invalid credentials",
-        "unauthorized":"unauthorized"
+        "unauthorized":"unauthorized",
+        "user_not_found":"user not found",
+        "institution_not_found":"institution not found"
+    })()
+
+    constants:typing.Optional[typing.Any] = type('MESSAGES', (), {
+        "excel_media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     })()
 
     mock_model_metaclass:typing.Optional[bool]=False

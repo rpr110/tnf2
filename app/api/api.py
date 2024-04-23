@@ -35,7 +35,7 @@ from app.utils.schema import PortalRole, BaseMeta, BaseError, BaseResponse, Toke
 
 from app import database_client, email_client, otp_client, redis_client, CryptographyClient, config, logger
 from app.utils.models import CurrencyMaster, StatusMaster, ServiceMaster, BankTypeMaster, BillingModeTypeMaster, BillingFrequencyMaster, VerificationCode, Wallet, VolumeTariff, Institution, BillingInformation, Company, Roles, Employee, NFaceLogs, Invoice, CompanyBankingInfo
-from app.utils.utils import generate_unauthorized_message_components, get_orjson_response
+from app.utils.utils import generate_unauthorized_message_components, get_orjson_response, get_nested_stats
 
 ##########
 ## APIs ##
@@ -327,64 +327,64 @@ def get_all_employees(
 
     # check if non super admin + company_id == all or company_id != cid
     logger.info(f"[{_id}] check if user has permisson to use this api")
-    if not (role_id != PortalRole.SUPER_ADMIN.value and (company_id != decoded_token.get("cid"))) and role_id in (_.value for _ in PortalRole)  :
-
-        # create session with db
-        logger.info(f"[{_id}] create connection to db")
-        with database_client.Session() as session:
-
-            # setup non verbose data
-            logger.info(f"[{_id}] create query")
-            non_verbose_data = (Employee.public_id.label("employee_id"), Employee.email_id, Employee.employee_name, Employee.phone_number)
-            data_to_query = (Employee,) if x_verbose else non_verbose_data
-            query_options = (joinedload(Employee.role), joinedload(Employee.company), ) if x_verbose else ()
-
-            # basic query
-            query = session.query( *data_to_query ).options( *query_options )
-
-            if company_id != "all": 
-                # filter by company id
-                logger.info(f"[{_id}] add company filter to query")
-                query = query.join(
-                    Company,
-                    Company.company_id == Employee.company_id
-                ).filter(
-                    Company.public_id == company_id
-                )
-            
-            if search:
-                logger.info(f"[{_id}] add full text search to query")
-                query = query.filter(Employee.email_id.like(f"%{search}%"))
-
-            # get total count for pagination
-            logger.info(f"[{_id}] get toatl count of employees")
-            total_count = session.query(func.count()).select_from(Employee).scalar()
-
-            # pagination
-            logger.info(f"[{_id}] add pagination to employees")
-            offset = (page_no - 1) * items_per_page
-            query = query.order_by(Employee.create_date).offset(offset).limit(items_per_page)
-
-            # get all data
-            logger.info(f"[{_id}] query db")
-            employee_data = query.all()
-
-            if employee_data:
-                # format data
-                logger.info(f"[{_id}] format retreived employee data")
-                employee_data = [  EmployeeMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in employee_data  ]
-        
-        logger.info(f"[{_id}] create response data")
-        _response = PaginationResponse
-        _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
-        _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
-        _data = employee_data
-        _error = None
-        _status_code = status.HTTP_200_OK
-
-    else:
+    if  not ( not (role_id != PortalRole.SUPER_ADMIN.value and (company_id != decoded_token.get("cid"))) and role_id in (_.value for _ in PortalRole)  ):
         # create unauthorized response data
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
+        # create response
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
+
+    # create session with db
+    logger.info(f"[{_id}] create connection to db")
+    with database_client.Session() as session:
+
+        # setup non verbose data
+        logger.info(f"[{_id}] create query")
+        non_verbose_data = (Employee.public_id.label("employee_id"), Employee.email_id, Employee.employee_name, Employee.phone_number)
+        data_to_query = (Employee,) if x_verbose else non_verbose_data
+        query_options = (joinedload(Employee.role), joinedload(Employee.company), ) if x_verbose else ()
+
+        # basic query
+        query = session.query( *data_to_query ).options( *query_options )
+
+        if company_id != "all": 
+            # filter by company id
+            logger.info(f"[{_id}] add company filter to query")
+            query = query.join(
+                Company,
+                Company.company_id == Employee.company_id
+            ).filter(
+                Company.public_id == company_id
+            )
+        
+        if search:
+            logger.info(f"[{_id}] add full text search to query")
+            query = query.filter(Employee.email_id.like(f"%{search}%"))
+
+        # get total count for pagination
+        logger.info(f"[{_id}] get toatl count of employees")
+        total_count = session.query(func.count()).select_from(Employee).scalar()
+
+        # pagination
+        logger.info(f"[{_id}] add pagination to employees")
+        offset = (page_no - 1) * items_per_page
+        query = query.order_by(Employee.create_date).offset(offset).limit(items_per_page)
+
+        # get all data
+        logger.info(f"[{_id}] query db")
+        employee_data = query.all()
+
+        if employee_data:
+            # format data
+            logger.info(f"[{_id}] format retreived employee data")
+            employee_data = [  EmployeeMF.model_validate(i).model_dump() if x_verbose else i._asdict() for i in employee_data  ]
+    
+    logger.info(f"[{_id}] create response data")
+    _response = PaginationResponse
+    _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
+    _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
+    _data = employee_data
+    _error = None
+    _status_code = status.HTTP_200_OK
 
     # create response
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
@@ -408,69 +408,68 @@ def get_employee(
     logger.info(f"[{_id}] check if user is authorized to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole)  :
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
-    else:
+    # create session with db
+    logger.info(f"[{_id}] create db connection")
+    with database_client.Session() as session:
 
-        # create session with db
-        logger.info(f"[{_id}] create db connection")
-        with database_client.Session() as session:
+        logger.info(f"[{_id}] create query")
+        non_verbose_data = (Employee.public_id.label("employee_id"), Employee.email_id, Employee.employee_name, Employee.phone_number)
+        data_to_query = (Employee,) if x_verbose else non_verbose_data
+        query_options = (joinedload(Employee.role), joinedload(Employee.company), ) if x_verbose else ()
 
-            logger.info(f"[{_id}] create query")
-            non_verbose_data = (Employee.public_id.label("employee_id"), Employee.email_id, Employee.employee_name, Employee.phone_number)
-            data_to_query = (Employee,) if x_verbose else non_verbose_data
-            query_options = (joinedload(Employee.role), joinedload(Employee.company), ) if x_verbose else ()
+        query = session.query(
+            *data_to_query
+        ).options(
+            *query_options
+        )
 
-            query = session.query(
-                *data_to_query
-            ).options(
-                *query_options
+        if role_id == PortalRole.SUPER_ADMIN.value:
+
+            logger.info(f"[{_id}] add employee_id filter to query")
+            query = query.filter(
+                Employee.public_id == employee_id
             )
 
-            if role_id == PortalRole.SUPER_ADMIN.value:
+        elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
+            
+            logger.info(f"[{_id}] add employee_id and company_id (from jwt) filter to query")
+            query = query.join(
+                Company,
+                Company.company_id == Employee.company_id
+            ).filter(
+                Employee.public_id == employee_id,
+                Company.public_id == decoded_token.get("cid")
+            )
 
-                logger.info(f"[{_id}] add employee_id filter to query")
-                query = query.filter(
-                    Employee.public_id == employee_id
-                )
+        logger.info(f"[{_id}] query db")
+        employee_data = query.first()
 
-            elif role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
-                
-                logger.info(f"[{_id}] add employee_id and company_id (from jwt) filter to query")
-                query = query.join(
-                    Company,
-                    Company.company_id == Employee.company_id
-                ).filter(
-                    Employee.public_id == employee_id,
-                    Company.public_id == decoded_token.get("cid")
-                )
+        if employee_data:
+            logger.info(f"[{_id}] format retreived data")
+            employee_data = EmployeeMF.model_validate(employee_data).model_dump() if x_verbose else employee_data._asdict()
 
-            logger.info(f"[{_id}] query db")
-            employee_data = query.first()
+            logger.info(f"[{_id}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message=None)
+            _data = employee_data
+            _error = None
+            _status_code = status.HTTP_200_OK
 
-            if employee_data:
-                logger.info(f"[{_id}] format retreived data")
-                employee_data = EmployeeMF.model_validate(employee_data).model_dump() if x_verbose else employee_data._asdict()
-
-                logger.info(f"[{_id}] create response data")
-                _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=True, message=None)
-                _data = employee_data
-                _error = None
-                _status_code = status.HTTP_200_OK
-
-                is_first_login = redis_client.get_data(key=f"NEW_{employee_data.get('employee_id')}")
-                employee_data["is_first_login"] = True if is_first_login else False
-                # redis_client.delete_key(f"NEW_{employee_data.get('employee_id')}")
+            is_first_login = redis_client.get_data(key=f"NEW_{employee_data.get('employee_id')}")
+            employee_data["is_first_login"] = True if is_first_login else False
+            # redis_client.delete_key(f"NEW_{employee_data.get('employee_id')}")
 
 
-            else:
-                logger.info(f"[{_id}] create user not found response data")
-                _response_message = "user not found"
-                _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-                _data = None
-                _error = BaseError(error_message=_response_message)
-                _status_code = status.HTTP_404_NOT_FOUND
+        else:
+            logger.info(f"[{_id}] create user not found response data")
+            _response_message = config.messages.user_not_found
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+            _data = None
+            _error = BaseError(error_message=_response_message)
+            _status_code = status.HTTP_404_NOT_FOUND
 
 
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
@@ -605,7 +604,7 @@ def modify_employee(
             if not employee_data:
                 # create user not found response data
                 logger.info(f"[{_id}] create user not found response data")
-                _response_message = "user not found"
+                _response_message = config.messages.user_not_found
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
@@ -656,106 +655,106 @@ def update_password(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  (role_id == PortalRole.EXPLORER.value and employee_id != decoded_token.get("uid")):
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
-    else:
-        # create session with db
-        logger.info(f"[{_id}] create db connection")
-        with database_client.Session() as session:
+    # create session with db
+    logger.info(f"[{_id}] create db connection")
+    with database_client.Session() as session:
 
-            # create query
-            logger.info(f"[{_id}] create query")
-            query = session.query(
-                Employee
+        # create query
+        logger.info(f"[{_id}] create query")
+        query = session.query(
+            Employee
+        )
+        
+        if role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.EXPLORER.value:
+            # add employee_id filter to query"
+            logger.info(f"[{_id}] add employee_id filter to query")
+            query = query.filter(
+                Employee.public_id == employee_id
             )
-            
-            if role_id == PortalRole.SUPER_ADMIN.value or role_id == PortalRole.EXPLORER.value:
-                # add employee_id filter to query"
-                logger.info(f"[{_id}] add employee_id filter to query")
-                query = query.filter(
-                    Employee.public_id == employee_id
-                )
 
-            elif role_id == PortalRole.ADMIN.value:
-                # add employee_id and company_id (from jwt) filter to query
-                logger.info(f"[{_id}] add employee_id and company_id (from jwt) filter to query")
-                query = query.join(
-                    Company,
-                    Employee.company_id == Company.company_id
-                ).filter(
-                    Employee.public_id == employee_id,
-                    Company.public_id == decoded_token.get("cid")
-                )
+        elif role_id == PortalRole.ADMIN.value:
+            # add employee_id and company_id (from jwt) filter to query
+            logger.info(f"[{_id}] add employee_id and company_id (from jwt) filter to query")
+            query = query.join(
+                Company,
+                Employee.company_id == Company.company_id
+            ).filter(
+                Employee.public_id == employee_id,
+                Company.public_id == decoded_token.get("cid")
+            )
 
-            # query db
-            logger.info(f"[{_id}] query db")
-            employee_data = query.first()
+        # query db
+        logger.info(f"[{_id}] query db")
+        employee_data = query.first()
 
-            if not employee_data: 
-                # create user not found response data
-                logger.info(f"[{_id}] create user not found response data")
-                _response_message = "user not found"
+        if not employee_data: 
+            # create user not found response data
+            logger.info(f"[{_id}] create user not found response data")
+            _response_message = config.messages.user_not_found
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+            _data = None
+            _error = BaseError(error_message=_response_message)
+            _status_code = status.HTTP_404_NOT_FOUND
+        else:
+
+            if role_id == PortalRole.EXPLORER.value and not CryptographyClient.validate_string_against_hash(req_body.old_password, employee_data.password):
+                # create invalid credentials response data
+                logger.info(f"[{_id}] create invalid credentials response data")
+                _response_message = config.messages.invalid_credentials
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
                 _error = BaseError(error_message=_response_message)
-                _status_code = status.HTTP_404_NOT_FOUND
+                _status_code = status.HTTP_403_FORBIDDEN
+            elif any(CryptographyClient.validate_string_against_hash(req_body.new_password, employee_data.get(f"password_old_{i}")) for i in range(1, 13)) or CryptographyClient.validate_string_against_hash(req_body.new_password, employee_data.password):
+                # create 'cant update new password with old password' response data
+                logger.info(f"[{_id}] create 'cant update new password with old password' response data")
+                _response_message = "new password cannot be the same as old password"
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+                _data = None
+                _error = BaseError(error_message=_response_message)
+                _status_code = status.HTTP_403_FORBIDDEN
             else:
+                
+                # shift old password
+                logger.info(f"[{_id}] shift old password")
+                employee_data.password_old_12 = employee_data.password_old_11
+                employee_data.password_old_11 = employee_data.password_old_10
+                employee_data.password_old_10 = employee_data.password_old_9
+                employee_data.password_old_9 = employee_data.password_old_8
+                employee_data.password_old_8 = employee_data.password_old_7
+                employee_data.password_old_7 = employee_data.password_old_6
+                employee_data.password_old_6 = employee_data.password_old_5
+                employee_data.password_old_5 = employee_data.password_old_4
+                employee_data.password_old_4 = employee_data.password_old_3
+                employee_data.password_old_3 = employee_data.password_old_2
+                employee_data.password_old_2 = employee_data.password_old_1
+                employee_data.password_old_1 = employee_data.password
 
-                if role_id == PortalRole.EXPLORER.value and not CryptographyClient.validate_string_against_hash(req_body.old_password, employee_data.password):
-                    # create invalid credentials response data
-                    logger.info(f"[{_id}] create invalid credentials response data")
-                    _response_message = config.messages.invalid_credentials
-                    _response = BaseResponse
-                    _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-                    _data = None
-                    _error = BaseError(error_message=_response_message)
-                    _status_code = status.HTTP_403_FORBIDDEN
-                elif any(CryptographyClient.validate_string_against_hash(req_body.new_password, employee_data.get(f"password_old_{i}")) for i in range(1, 13)) or CryptographyClient.validate_string_against_hash(req_body.new_password, employee_data.password):
-                    # create 'cant update new password with old password' response data
-                    logger.info(f"[{_id}] create 'cant update new password with old password' response data")
-                    _response_message = "new password cannot be the same as old password"
-                    _response = BaseResponse
-                    _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-                    _data = None
-                    _error = BaseError(error_message=_response_message)
-                    _status_code = status.HTTP_403_FORBIDDEN
-                else:
-                    
-                    # shift old password
-                    logger.info(f"[{_id}] shift old password")
-                    employee_data.password_old_12 = employee_data.password_old_11
-                    employee_data.password_old_11 = employee_data.password_old_10
-                    employee_data.password_old_10 = employee_data.password_old_9
-                    employee_data.password_old_9 = employee_data.password_old_8
-                    employee_data.password_old_8 = employee_data.password_old_7
-                    employee_data.password_old_7 = employee_data.password_old_6
-                    employee_data.password_old_6 = employee_data.password_old_5
-                    employee_data.password_old_5 = employee_data.password_old_4
-                    employee_data.password_old_4 = employee_data.password_old_3
-                    employee_data.password_old_3 = employee_data.password_old_2
-                    employee_data.password_old_2 = employee_data.password_old_1
-                    employee_data.password_old_1 = employee_data.password
+                # update password 
+                logger.info(f"[{_id}] update password")
+                employee_data.password = CryptographyClient.hash_string(req_body.new_password)
+                session.commit()
 
-                    # update password 
-                    logger.info(f"[{_id}] update password")
-                    employee_data.password = CryptographyClient.hash_string(req_body.new_password)
-                    session.commit()
+                # create response message
+                logger.info(f"[{_id}] create response message")
+                _response = BaseResponse
+                _meta = BaseMeta(_id=_id, successful=True, message="updated")
+                _data = None
+                _error = None
+                _status_code = status.HTTP_200_OK
 
-                    # create response message
-                    logger.info(f"[{_id}] create response message")
-                    _response = BaseResponse
-                    _meta = BaseMeta(_id=_id, successful=True, message="updated")
-                    _data = None
-                    _error = None
-                    _status_code = status.HTTP_200_OK
-
-                # delete first login flag from redis
-                logger.info(f"[{_id}] delete first login flag from redis")
-                redis_client.delete_key(f"NEW_{employee_data.public_id}")
+            # delete first login flag from redis
+            logger.info(f"[{_id}] delete first login flag from redis")
+            redis_client.delete_key(f"NEW_{employee_data.public_id}")
 
 
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
-    
+
 @api.delete("/employee/{employee_id}")
 def delete_employee(
     *,
@@ -811,7 +810,7 @@ def delete_employee(
             if not employee_data:
                 # create employee not found response data
                 logger.info(f"[{_id}] create employee not found response data")
-                _response_message = "user not found"
+                _response_message = config.messages.user_not_found
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
@@ -867,171 +866,169 @@ def get_nface_logs(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
+    if x_response_type not in ("csv-transaction" , "excel-transaction"):
+
+        # create session with db
+        logger.info(f"[{_id}] create db connection")
+        with database_client.Session() as session:
+                
+            # create query
+            logger.info(f"[{_id}] create query")
+            query = session.query(
+                NFaceLogs
+            )
+
+            if company_id != "all":
+                # add company_id filter to query
+                logger.info(f"[{_id}] add company_id filter to query")
+                query = query.join(
+                    Company,
+                    Company.company_id == NFaceLogs.company_id
+                ).filter(
+                    Company.public_id == company_id
+                )
+            
+
+            if status_filter != "all":
+                # add status filter to query
+                logger.info(f"[{_id}] add status filter to query")
+                query = query.join(
+                    StatusMaster,
+                    StatusMaster.status_id == NFaceLogs.status_id
+                ).filter(StatusMaster.status == status_filter.upper().strip())
+
+
+            if service_filter != "all":
+                # add service filter to query
+                logger.info(f"[{_id}] add service filter to query")
+                query = query.join(
+                    ServiceMaster,
+                    ServiceMaster.service_id == NFaceLogs.service_id
+                ).filter(ServiceMaster.service_name == service_filter.upper().strip())
+
+
+            # add datetime filter to query
+            logger.info(f"[{_id}] add datetime filter to query")
+            query = query.filter(NFaceLogs.create_date >= start_datetime,
+                                    NFaceLogs.create_date <= end_datetime)
+            
+            
+
+            # find total count of logs
+            logger.info(f"[{_id}] find total count of logs")
+            total_count = session.query(func.count()).select_from(NFaceLogs).scalar()
+
+
+            # Pagination
+            if not x_ignore_pagination:
+                logger.info(f"[{_id}] add pagination to query")
+                offset = (page_no - 1) * items_per_page
+                query = query.order_by(NFaceLogs.create_date).offset(offset).limit(items_per_page)
+
+            # query db
+            logger.info(f"[{_id}] query db")
+            log_data = query.all()
+
+            # format retrieved data
+            logger.info(f"[{_id}] format retrieved data")
+            log_data = [ NFaceLogsMF.model_validate(_).model_dump() for _ in log_data ]
+
+            if x_response_type == "json":
+
+                # create response data
+                logger.info(f"[{_id}] create response data")
+                _response = PaginationResponse
+                _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
+                _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
+                _data = log_data
+                _error = None
+                _status_code = status.HTTP_200_OK
+
+            elif x_response_type == "csv" or x_response_type == "excel":
+                
+                # create excel response data
+                logger.info(f"[{_id}] create excel response data")
+
+                csv_data = io.StringIO()
+                csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
+                csv_writer.writeheader()
+                csv_writer.writerows(log_data)
+
+                # Create a streaming response
+                response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
+                response.headers["Content-Disposition"] = "attachment;filename=output.csv"
+                return response
     else:
 
+        query="""
+        SELECT
+            TFW.session_code as 'Transaction ID/Ref',
+            TFW.company_name as 'Sending_institution',
+            'NIBSS' as 'Beneficiary_institution',
+            null as 'Terminal',
+            'CR' as 'Transaction Type',
+            TFW.service_name as 'Service',
+            TFW.transaction_fee as 'Transaction Amount',
+            null as 'Fee',
+            BI.vat as 'VAT Fee',
+            null as 'Platform Fee',
+            null as 'Sending_bank fee',
+            null as 'Beneficiary Bank Fee',
+            null as 'Introducer fee',
+            TFW.create_date as 'Transaction Date',
+            CBI.billing_account_name as 'Sender Account Name',
+            CBI.billing_account_number as 'Sender Account Number',
+            'NIBSS' as 'Beneficiary Account Name', 
+            null as 'Beneficiary Account Number',
 
-        if x_response_type not in ("csv-transaction" , "excel-transaction"):
+            TFW.*,
+            BTM.bank_type
+        FROM 
+            TransactionFeeView TFW
+        LEFT JOIN Company C on TFW.company_name = C.company_name
+        LEFT JOIN Billing_Information BI on C.company_id = BI.company_id 
+        LEFT JOIN Company_Banking_Info CBI on C.company_id=CBI.company_id
+        LEFT JOIN Bank_Type_Master BTM on CBI.company_banking_id=BTM.bank_type_id 
 
-            # create session with db
-            logger.info(f"[{_id}] create db connection")
-            with database_client.Session() as session:
-                    
-                # create query
-                logger.info(f"[{_id}] create query")
-                query = session.query(
-                    NFaceLogs
-                )
+        """
 
-                if company_id != "all":
-                    # add company_id filter to query
-                    logger.info(f"[{_id}] add company_id filter to query")
-                    query = query.join(
-                        Company,
-                        Company.company_id == NFaceLogs.company_id
-                    ).filter(
-                        Company.public_id == company_id
-                    )
-                
+        query = query + f" WHERE C.public_id='{company_id}' " if company_id != "all" else query
 
-                if status_filter != "all":
-                    # add status filter to query
-                    logger.info(f"[{_id}] add status filter to query")
-                    query = query.join(
-                        StatusMaster,
-                        StatusMaster.status_id == NFaceLogs.status_id
-                    ).filter(StatusMaster.status == status_filter.upper().strip())
+        query = query + f" WHERE TFW.status='{status_filter.upper().strip()}' " if status_filter != "all" else query
 
+        query = query + f" WHERE TFW.service_name='{service_filter.upper().strip()}' " if service_filter != "all" else query
 
-                if service_filter != "all":
-                    # add service filter to query
-                    logger.info(f"[{_id}] add service filter to query")
-                    query = query.join(
-                        ServiceMaster,
-                        ServiceMaster.service_id == NFaceLogs.service_id
-                    ).filter(ServiceMaster.service_name == service_filter.upper().strip())
+        sd = start_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        ed = end_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        query = query + f" WHERE TFW.create_date BETWEEN '{sd}' AND '{ed}' "
 
+        query += ";"
 
-                # add datetime filter to query
-                logger.info(f"[{_id}] add datetime filter to query")
-                query = query.filter(NFaceLogs.create_date >= start_datetime,
-                                        NFaceLogs.create_date <= end_datetime)
-                
-                
+        df = pd.read_sql_query(query, database_client.engine)
 
-                # find total count of logs
-                logger.info(f"[{_id}] find total count of logs")
-                total_count = session.query(func.count()).select_from(NFaceLogs).scalar()
+        # Specify the Excel file name
+        formatted_date = end_datetime.strftime("%Y%m%d")
+        excel_file_name = f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx"
 
-
-                # Pagination
-                if not x_ignore_pagination:
-                    logger.info(f"[{_id}] add pagination to query")
-                    offset = (page_no - 1) * items_per_page
-                    query = query.order_by(NFaceLogs.create_date).offset(offset).limit(items_per_page)
-
-                # query db
-                logger.info(f"[{_id}] query db")
-                log_data = query.all()
-
-                # format retrieved data
-                logger.info(f"[{_id}] format retrieved data")
-                log_data = [ NFaceLogsMF.model_validate(_).model_dump() for _ in log_data ]
-
-                if x_response_type == "json":
-
-                    # create response data
-                    logger.info(f"[{_id}] create response data")
-                    _response = PaginationResponse
-                    _pagination_data = PaginationData(items_per_page=items_per_page, page_no=page_no, total_count=total_count, page_url=request.url._url )
-                    _meta = PaginationMeta(_id=_id, successful=True, message=None, pagination_data=_pagination_data)
-                    _data = log_data
-                    _error = None
-                    _status_code = status.HTTP_200_OK
-
-                elif x_response_type == "csv" or x_response_type == "excel":
-                    
-                    # create excel response data
-                    logger.info(f"[{_id}] create excel response data")
-
-                    csv_data = io.StringIO()
-                    csv_writer = csv.DictWriter(csv_data, fieldnames=log_data[0].keys())
-                    csv_writer.writeheader()
-                    csv_writer.writerows(log_data)
-
-                    # Create a streaming response
-                    response = StreamingResponse(iter([csv_data.getvalue()]), media_type="text/csv")
-                    response.headers["Content-Disposition"] = "attachment;filename=output.csv"
-                    return response
-        else:
-
-            query="""
-            SELECT
-                TFW.session_code as 'Transaction ID/Ref',
-                TFW.company_name as 'Sending_institution',
-                'NIBSS' as 'Beneficiary_institution',
-                null as 'Terminal',
-                'CR' as 'Transaction Type',
-                TFW.service_name as 'Service',
-                TFW.transaction_fee as 'Transaction Amount',
-                null as 'Fee',
-                BI.vat as 'VAT Fee',
-                null as 'Platform Fee',
-                null as 'Sending_bank fee',
-                null as 'Beneficiary Bank Fee',
-                null as 'Introducer fee',
-                TFW.create_date as 'Transaction Date',
-                CBI.billing_account_name as 'Sender Account Name',
-                CBI.billing_account_number as 'Sender Account Number',
-                'NIBSS' as 'Beneficiary Account Name', 
-                null as 'Beneficiary Account Number',
-
-                TFW.*,
-                BTM.bank_type
-            FROM 
-                TransactionFeeView TFW
-            LEFT JOIN Company C on TFW.company_name = C.company_name
-            LEFT JOIN Billing_Information BI on C.company_id = BI.company_id 
-            LEFT JOIN Company_Banking_Info CBI on C.company_id=CBI.company_id
-            LEFT JOIN Bank_Type_Master BTM on CBI.company_banking_id=BTM.bank_type_id 
-
-            """
-
-            query = query + f" WHERE C.public_id='{company_id}' " if company_id != "all" else query
-
-            query = query + f" WHERE TFW.status='{status_filter.upper().strip()}' " if status_filter != "all" else query
-
-            query = query + f" WHERE TFW.service_name='{service_filter.upper().strip()}' " if service_filter != "all" else query
-
-            sd = start_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            ed = end_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            query = query + f" WHERE TFW.create_date BETWEEN '{sd}' AND '{ed}' "
-
-            query += ";"
-
-            df = pd.read_sql_query(query, database_client.engine)
-
-            # Specify the Excel file name
-            formatted_date = end_datetime.strftime("%Y%m%d")
-            excel_file_name = f"N-Face_Billing_Transaction_details_{formatted_date}.xlsx"
-
-            # Write the DataFrame to an Excel file
-            logger.info(f"[{_id}] Write the DataFrame to an Excel file")
-            excel_bytes = io.BytesIO()
-            df.to_excel(excel_bytes, index=False)
+        # Write the DataFrame to an Excel file
+        logger.info(f"[{_id}] Write the DataFrame to an Excel file")
+        excel_bytes = io.BytesIO()
+        df.to_excel(excel_bytes, index=False)
 
 
-            # Create a streaming response for the Excel file
-            logger.info(f"[{_id}] Create a streaming response for the Excel file")
-            response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
+        # Create a streaming response for the Excel file
+        logger.info(f"[{_id}] Create a streaming response for the Excel file")
+        response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type=config.constants.media_type)
+        response.headers["Content-Disposition"] = f"attachment;filename={excel_file_name}"
 
-            # Optionally, close the file to free up resources
-            excel_bytes.close()
+        # Optionally, close the file to free up resources
+        excel_bytes.close()
 
-            # Return the streaming response
-            return response
-    
+        # Return the streaming response
+        return response
+
 
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
         
@@ -1056,69 +1053,62 @@ def get_nface_stats(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if  role_id not in (_.value for _ in PortalRole) or  ( (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) and (company_id != decoded_token.get("cid") or company_id=="all") ):
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
-    else:
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
-        # create session with db
-        logger.info(f"[{_id}] create db connection")
-        with database_client.Session() as session:
-            
-            # create query
-            logger.info(f"[{_id}] create query")
-            query = session.query(
-                ServiceMaster.service_name,
-                StatusMaster.status,
-                func.count().label('count')
-            ).join(
-                NFaceLogs,
-                StatusMaster.status_id==NFaceLogs.status_id
-            ).join(
-                ServiceMaster,
-                ServiceMaster.service_id==NFaceLogs.service_id
+    # create session with db
+    logger.info(f"[{_id}] create db connection")
+    with database_client.Session() as session:
+        
+        # create query
+        logger.info(f"[{_id}] create query")
+        query = session.query(
+            ServiceMaster.service_name,
+            StatusMaster.status,
+            func.count().label('count')
+        ).join(
+            NFaceLogs,
+            StatusMaster.status_id==NFaceLogs.status_id
+        ).join(
+            ServiceMaster,
+            ServiceMaster.service_id==NFaceLogs.service_id
+        )
+
+
+        if company_id != "all":
+            # add company_id filter to query
+            logger.info(f"[{_id}] add company_id filter to query")
+            query = query.join(
+                Company,
+                Company.company_id == NFaceLogs.company_id
+            ).filter(
+                Company.public_id == company_id
             )
 
+        # add datetime filter to query
+        logger.info(f"[{_id}] add datetime filter to query")
+        query = query.filter(
+            NFaceLogs.create_date >= start_datetime,
+            NFaceLogs.create_date <= end_datetime
+        )
 
-            if company_id != "all":
-                # add company_id filter to query
-                logger.info(f"[{_id}] add company_id filter to query")
-                query = query.join(
-                    Company,
-                    Company.company_id == NFaceLogs.company_id
-                ).filter(
-                    Company.public_id == company_id
-                )
+        # Add grouping and ordering
+        logger.info(f"[{_id}] add groupby filter to query")
+        query = query.group_by(ServiceMaster.service_name, StatusMaster.status,)
 
-            # add datetime filter to query
-            logger.info(f"[{_id}] add datetime filter to query")
-            query = query.filter(
-                NFaceLogs.create_date >= start_datetime,
-                NFaceLogs.create_date <= end_datetime
-            )
+        # restructure retrieved data
+        logger.info(f"[{_id}] restructure retrieved data")
+        stat_dict = lambda x : {"FAILURE":x.get("FAILURE",0),"SUCCESS":x.get("SUCCESS",0),"ISSUE":x.get("ISSUE",0)}
+        query = query.all()
+        if query:
+            nested_dict = get_nested_stats(query, stat_dict)
 
-            # Add grouping and ordering
-            logger.info(f"[{_id}] add groupby filter to query")
-            query = query.group_by(ServiceMaster.service_name, StatusMaster.status,)
-
-            # restructure retrieved data
-            logger.info(f"[{_id}] restructure retrieved data")
-            stat_dict = lambda x : {"FAILURE":x.get("FAILURE",0),"SUCCESS":x.get("SUCCESS",0),"ISSUE":x.get("ISSUE",0)}
-            query = query.all()
-            if query:
-                nested_dict = {}
-                for outer_key, inner_key, value in query:
-                    if outer_key not in nested_dict:
-                        nested_dict[outer_key] = {}
-                    nested_dict[outer_key][inner_key] = value
-
-            for k,v in nested_dict.items():
-                nested_dict[k] = stat_dict(v)
-
-            # create response data
-            logger.info(f"[{_id}] create response data")
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=True, message=None)
-            _data = nested_dict
-            _error = None
-            _status_code = status.HTTP_200_OK
+        # create response data
+        logger.info(f"[{_id}] create response data")
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=True, message=None)
+        _data = nested_dict
+        _error = None
+        _status_code = status.HTTP_200_OK
 
 
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
@@ -1294,7 +1284,7 @@ def get_invoice(
 
                 # Create a streaming response for the Excel file
                 logger.info(f"[{_id}] Create a streaming response for the Excel file")
-                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type=config.constants.media_type)
                 response.headers["Content-Disposition"] = "attachment;filename=output.xlsx"
 
                 # Optionally, close the BytesIO object to free up resources
@@ -1350,7 +1340,7 @@ def get_invoice(
 
                 # Create a streaming response for the Excel file
                 logger.info(f"[{_id}] Create a streaming response for the Excel file")
-                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                response = StreamingResponse(iter([excel_bytes.getvalue()]), media_type=config.constants.media_type)
                 response.headers["Content-Disposition"] = f"attachment;filename={_file_name}"
 
                 excel_bytes.close()
@@ -1382,56 +1372,57 @@ def get_invoice_stats(
     logger.info(f"[{_id}] check if user has permission to use this endpoint")
     if (role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value) or (company_id != "all" and role_id != PortalRole.SUPER_ADMIN.value ):
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
-    else:
-        # create session with db
-        logger.info(f"[{_id}] create db connection")
-        with database_client.Session() as session:
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
+    
+    # create session with db
+    logger.info(f"[{_id}] create db connection")
+    with database_client.Session() as session:
 
-            # create query
-            logger.info(f"[{_id}] create query")
-            query = session.query(
-                Invoice.payment_status,
-                func.count(Invoice.payment_status).label('count'),
-                func.sum(Invoice.amount).label('total_amount')
-            )
-
-
-            if company_id != "all":
-                # add company filter to query
-                logger.info(f"[{_id}] add company filter to query")
-                query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
+        # create query
+        logger.info(f"[{_id}] create query")
+        query = session.query(
+            Invoice.payment_status,
+            func.count(Invoice.payment_status).label('count'),
+            func.sum(Invoice.amount).label('total_amount')
+        )
 
 
-            # add datetime filter to query
-            logger.info(f"[{_id}] add datetime filter to query")
-            query = query.filter(NFaceLogs.create_date >= start_datetime,
-                                    NFaceLogs.create_date <= end_datetime)
+        if company_id != "all":
+            # add company filter to query
+            logger.info(f"[{_id}] add company filter to query")
+            query = query.join(Company, Company.company_id == Invoice.company_id).filter(Company.public_id == company_id)
 
-            # add groupby payment_status to query
-            logger.info(f"[{_id}] add groupby payment_status to query")
-            query = query.group_by(Invoice.payment_status)
 
-            # query db
-            logger.info(f"[{_id}] query db")
-            stats_data = query.all()
+        # add datetime filter to query
+        logger.info(f"[{_id}] add datetime filter to query")
+        query = query.filter(NFaceLogs.create_date >= start_datetime,
+                                NFaceLogs.create_date <= end_datetime)
 
-            # reformat data
-            nested_dict = {}
-            if stats_data:
-                logger.info(f"[{_id}] reformat data")
-                for _status, _count, _amount in stats_data:
-                    _status_name = "PAID" if _status == 1 else "PENDING"
-                    nested_dict[_status_name] = {}
-                    nested_dict[_status_name]["total_count"] = _count
-                    nested_dict[_status_name]["total_amount"] = _amount
+        # add groupby payment_status to query
+        logger.info(f"[{_id}] add groupby payment_status to query")
+        query = query.group_by(Invoice.payment_status)
 
-        # create response data
-        logger.info(f"[{_id}] create response data")
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=True, message=None)
-        _data = nested_dict
-        _error = None
-        _status_code = status.HTTP_200_OK
+        # query db
+        logger.info(f"[{_id}] query db")
+        stats_data = query.all()
+
+        # reformat data
+        nested_dict = {}
+        if stats_data:
+            logger.info(f"[{_id}] reformat data")
+            for _status, _count, _amount in stats_data:
+                _status_name = "PAID" if _status == 1 else "PENDING"
+                nested_dict[_status_name] = {}
+                nested_dict[_status_name]["total_count"] = _count
+                nested_dict[_status_name]["total_amount"] = _amount
+
+    # create response data
+    logger.info(f"[{_id}] create response data")
+    _response = BaseResponse
+    _meta = BaseMeta(_id=_id, successful=True, message=None)
+    _data = nested_dict
+    _error = None
+    _status_code = status.HTTP_200_OK
 
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
         
@@ -1761,159 +1752,159 @@ def onboard_client(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
-    else:
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
 
-        # check if user has permission to use this endpoint
-        logger.info(f"[{_id}] check if user has permission to use this endpoint")
-        with database_client.Session() as session:
+    # check if user has permission to use this endpoint
+    logger.info(f"[{_id}] check if user has permission to use this endpoint")
+    with database_client.Session() as session:
 
-            # create company obj
-            logger.info(f"[{_id}] create company obj")
-            company_data = Company(
-                company_name=req_body.company_name,
-                is_active=True,
-                client_id=req_body.client_id,
-                auto_disable_days=req_body.auto_disable_days,
-            )
+        # create company obj
+        logger.info(f"[{_id}] create company obj")
+        company_data = Company(
+            company_name=req_body.company_name,
+            is_active=True,
+            client_id=req_body.client_id,
+            auto_disable_days=req_body.auto_disable_days,
+        )
 
-            # add company to db
-            logger.info(f"[{_id}] add company to db")
-            session.add(company_data)
+        # add company to db
+        logger.info(f"[{_id}] add company to db")
+        session.add(company_data)
 
 
-            try:
-                # flush data
-                logger.info(f"[{_id}] flush data")
-                session.flush()
-            except sqlalchemy.exc.IntegrityError as e:
-                # create company/client_id exists response data
-                logger.info(f"[{_id}] create company/client_id exists response data {e}")
-                _response_message = "company/client_id exists"
-                _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-                _data = None
-                _error = BaseError(error_message=_response_message)
-                _status_code = status.HTTP_400_BAD_REQUEST
-    
-                # create response
-                return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
-
-            # load billing data
-            logger.info(f"[{_id}] load billing data")
-            billing_frequency_data = session.query(
-                BillingFrequencyMaster
-            ).filter(
-                BillingFrequencyMaster.public_id==req_body.billing_frequency_id
-            ).first()
-
-            # load billing mode data
-            logger.info(f"[{_id}] load billing mode data")
-            billing_mode_type_data = session.query(
-                BillingModeTypeMaster
-            ).filter(
-                BillingModeTypeMaster.public_id==req_body.billing_mode_type_id
-            ).first()
-
-            # load institution data
-            logger.info(f"[{_id}] load institution data")
-            institution_data = session.query(
-                Institution
-            ).filter(
-                Institution.public_id==req_body.institution_id
-            ).first()
-
-            # create billing info obj
-            logger.info(f"[{_id}] create billing info obj")
-            billing_data = BillingInformation(
-                email_id1=req_body.email_id,
-                floor_cost=req_body.floor_cost,
-                currency_id=1,
-                billing_start_date=req_body.billing_start_date,
-                billing_end_date=req_body.billing_end_date,
-                billing_frequency_id=billing_frequency_data.billing_frequency_id,
-                vat=req_body.vat,
-                billing_mode_type_id=billing_mode_type_data.billing_mode_type_id,
-                institution_id= institution_data.institution_id if institution_data else None,
-                company_id=company_data.company_id
-            )
-
-            # ad billing info data to db
-            logger.info(f"[{_id}] add billing info data to db")
-            session.add(billing_data)
-
-            if billing_mode_type_data.billing_mode_type == "PREPAID":
-                # create wallet obj
-                logger.info(f"[{_id}] create wallet obj")
-                wallet_data = Wallet(
-                    company_id = company_data.company_id,
-                    amount = 0.0,
-                    ledger_amount = 0.0,
-                )
-                # add wallet obj to db
-                logger.info(f"[{_id}] add wallet obj to db")
-                session.add(wallet_data)
-
-            # load bank tyoe data from db
-            logger.info(f"[{_id}] load bank tyoe data from db")
-            bank_type_data = session.query(
-                BankTypeMaster
-            ).filter(
-                BankTypeMaster.public_id==req_body.bank_type_id
-            ).first()
-
-            # create company banking info obj
-            logger.info(f"[{_id}] create company banking info obj")
-            company_banking_data = CompanyBankingInfo(
-                company_id = company_data.company_id,
-                bank_type_id = bank_type_data.bank_type_id,
-                routing_number= req_body.routing_number,
-                product_code= req_body.product_code,
-                sort_code= req_body.sort_code,
-                payee_beneficiary= req_body.payee_beneficiary,
-                institution_code= req_body.institution_code,
-                billing_account_number= req_body.billing_account_number,
-                billing_bank_code= req_body.billing_bank_code,
-                billing_account_name= req_body.billing_account_name,
-            )
-
-            # add comany banking info to db
-            logger.info(f"[{_id}] add comany banking info to db")
-            session.add(company_banking_data)
-            
+        try:
             # flush data
             logger.info(f"[{_id}] flush data")
             session.flush()
+        except sqlalchemy.exc.IntegrityError as e:
+            # create company/client_id exists response data
+            logger.info(f"[{_id}] create company/client_id exists response data {e}")
+            _response_message = "company/client_id exists"
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+            _data = None
+            _error = BaseError(error_message=_response_message)
+            _status_code = status.HTTP_400_BAD_REQUEST
+
+            # create response
+            return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
+
+        # load billing data
+        logger.info(f"[{_id}] load billing data")
+        billing_frequency_data = session.query(
+            BillingFrequencyMaster
+        ).filter(
+            BillingFrequencyMaster.public_id==req_body.billing_frequency_id
+        ).first()
+
+        # load billing mode data
+        logger.info(f"[{_id}] load billing mode data")
+        billing_mode_type_data = session.query(
+            BillingModeTypeMaster
+        ).filter(
+            BillingModeTypeMaster.public_id==req_body.billing_mode_type_id
+        ).first()
+
+        # load institution data
+        logger.info(f"[{_id}] load institution data")
+        institution_data = session.query(
+            Institution
+        ).filter(
+            Institution.public_id==req_body.institution_id
+        ).first()
+
+        # create billing info obj
+        logger.info(f"[{_id}] create billing info obj")
+        billing_data = BillingInformation(
+            email_id1=req_body.email_id,
+            floor_cost=req_body.floor_cost,
+            currency_id=1,
+            billing_start_date=req_body.billing_start_date,
+            billing_end_date=req_body.billing_end_date,
+            billing_frequency_id=billing_frequency_data.billing_frequency_id,
+            vat=req_body.vat,
+            billing_mode_type_id=billing_mode_type_data.billing_mode_type_id,
+            institution_id= institution_data.institution_id if institution_data else None,
+            company_id=company_data.company_id
+        )
+
+        # ad billing info data to db
+        logger.info(f"[{_id}] add billing info data to db")
+        session.add(billing_data)
+
+        if billing_mode_type_data.billing_mode_type == "PREPAID":
+            # create wallet obj
+            logger.info(f"[{_id}] create wallet obj")
+            wallet_data = Wallet(
+                company_id = company_data.company_id,
+                amount = 0.0,
+                ledger_amount = 0.0,
+            )
+            # add wallet obj to db
+            logger.info(f"[{_id}] add wallet obj to db")
+            session.add(wallet_data)
+
+        # load bank tyoe data from db
+        logger.info(f"[{_id}] load bank tyoe data from db")
+        bank_type_data = session.query(
+            BankTypeMaster
+        ).filter(
+            BankTypeMaster.public_id==req_body.bank_type_id
+        ).first()
+
+        # create company banking info obj
+        logger.info(f"[{_id}] create company banking info obj")
+        company_banking_data = CompanyBankingInfo(
+            company_id = company_data.company_id,
+            bank_type_id = bank_type_data.bank_type_id,
+            routing_number= req_body.routing_number,
+            product_code= req_body.product_code,
+            sort_code= req_body.sort_code,
+            payee_beneficiary= req_body.payee_beneficiary,
+            institution_code= req_body.institution_code,
+            billing_account_number= req_body.billing_account_number,
+            billing_bank_code= req_body.billing_bank_code,
+            billing_account_name= req_body.billing_account_name,
+        )
+
+        # add comany banking info to db
+        logger.info(f"[{_id}] add comany banking info to db")
+        session.add(company_banking_data)
+        
+        # flush data
+        logger.info(f"[{_id}] flush data")
+        session.flush()
 
 
-            if req_body.volume_tariff:
-                # add volume tarrif data
-                logger.info(f"[{_id}] add volume tarrif data")
-                for vt in req_body.volume_tariff:
-                    volume_tariff_data = VolumeTariff(
-                        institution_id=None,
-                        billing_id=billing_data.billing_id,
-                        min_volume=vt.get("min_vol"),
-                        max_volume=vt.get("max_vol"),
-                        rate=vt.get("rate")
-                    )
-                    session.add(volume_tariff_data)
+        if req_body.volume_tariff:
+            # add volume tarrif data
+            logger.info(f"[{_id}] add volume tarrif data")
+            for vt in req_body.volume_tariff:
+                volume_tariff_data = VolumeTariff(
+                    institution_id=None,
+                    billing_id=billing_data.billing_id,
+                    min_volume=vt.get("min_vol"),
+                    max_volume=vt.get("max_vol"),
+                    rate=vt.get("rate")
+                )
+                session.add(volume_tariff_data)
 
-            # commit data
-            logger.info(f"[{_id}] commit data")
-            session.commit()
+        # commit data
+        logger.info(f"[{_id}] commit data")
+        session.commit()
 
-            if company_data:
-                # format data
-                logger.info(f"[{_id}] format data")
-                company_data = CompanyMF.model_validate(company_data).model_dump()  
-                        
-        # create response data
-        logger.info(f"[{_id}] create response data")
-        _response = BaseResponse
-        _meta = BaseMeta(_id=_id, successful=True, message=None)
-        _data = company_data
-        _error = None
-        _status_code = status.HTTP_200_OK
+        if company_data:
+            # format data
+            logger.info(f"[{_id}] format data")
+            company_data = CompanyMF.model_validate(company_data).model_dump()  
+                    
+    # create response data
+    logger.info(f"[{_id}] create response data")
+    _response = BaseResponse
+    _meta = BaseMeta(_id=_id, successful=True, message=None)
+    _data = company_data
+    _error = None
+    _status_code = status.HTTP_200_OK
 
     # create response
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
@@ -2014,96 +2005,93 @@ def update_company_billing(
     if role_id == PortalRole.ADMIN.value or role_id == PortalRole.EXPLORER.value:
         # create unathorized response data
         _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
-    else:
+        # create response
+        return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
+    
+    # check if user has permission to use this endpoint
+    logger.info(f"[{_id}] check if user has permission to use this endpoint")
+    with database_client.Session() as session:
 
-        # check if user has permission to use this endpoint
-        logger.info(f"[{_id}] check if user has permission to use this endpoint")
-        with database_client.Session() as session:
+        # query company and billing data
+        logger.info(f"[{_id}] query company and billing data")
+        company_data, billing_data = session.query(
+            Company,
+            BillingInformation
+        ).join(
+            Company,
+            BillingInformation.company_id == Company.company_id
+        ).filter(
+            Company.public_id==company_id
+        ).first()
 
+        # query billing frequency data
+        logger.info(f"[{_id}] query billing frequency data")
+        billing_frequency_data = session.query(BillingFrequencyMaster).filter(BillingFrequencyMaster.public_id == req_body.billing_frequency_id).first()
+        # query billing mode data
+        logger.info(f"[{_id}] query billing mode data")
+        billing_mode_type_data = session.query(BillingModeTypeMaster).filter(BillingModeTypeMaster.public_id==req_body.billing_mode_type_id).first()
+        # query institution data
+        logger.info(f"[{_id}] query institution data")
+        institution_data = session.query(Institution).filter(Institution.public_id==req_body.institution_id).first()
 
-            # query company and billing data
-            logger.info(f"[{_id}] query company and billing data")
-            company_data, billing_data = session.query(
-                Company,
-                BillingInformation
-            ).join(
-                Company,
-                BillingInformation.company_id == Company.company_id
-            ).filter(
-                Company.public_id==company_id
-            ).first()
-
-
-            # query billing frequency data
-            logger.info(f"[{_id}] query billing frequency data")
-            billing_frequency_data = session.query(BillingFrequencyMaster).filter(BillingFrequencyMaster.public_id == req_body.billing_frequency_id).first()
-            # query billing mode data
-            logger.info(f"[{_id}] query billing mode data")
-            billing_mode_type_data = session.query(BillingModeTypeMaster).filter(BillingModeTypeMaster.public_id==req_body.billing_mode_type_id).first()
-            # query institution data
-            logger.info(f"[{_id}] query institution data")
-            institution_data = session.query(Institution).filter(Institution.public_id==req_body.institution_id).first()
-
-
-            # update data
-            logger.info(f"[{_id}] update data")
-            billing_data.email_id1=req_body.email_id1
-            billing_data.floor_cost=req_body.floor_cost
-            billing_data.vat=req_body.vat 
-            # currency_id:Optional[float]
-            billing_data.billing_start_date=req_body.billing_start_date
-            billing_data.billing_end_date=req_body.billing_end_date
-            billing_data.billing_frequency_id=billing_frequency_data.billing_frequency_id
-            billing_data.billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
-            billing_data.institution_id=institution_data.institution_id if institution_data else None
+        # update data
+        logger.info(f"[{_id}] update data")
+        billing_data.email_id1=req_body.email_id1
+        billing_data.floor_cost=req_body.floor_cost
+        billing_data.vat=req_body.vat 
+        # currency_id:Optional[float]
+        billing_data.billing_start_date=req_body.billing_start_date
+        billing_data.billing_end_date=req_body.billing_end_date
+        billing_data.billing_frequency_id=billing_frequency_data.billing_frequency_id
+        billing_data.billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
+        billing_data.institution_id=institution_data.institution_id if institution_data else None
 
 
-            # update volume tarrif
-            logger.info(f"[{_id}] update volume tarrif")
-            volume_tariff_data = session.query(
-                VolumeTariff
-            ).filter(
-                VolumeTariff.billing_id == billing_data.billing_id
-            ).all()
+        # update volume tarrif
+        logger.info(f"[{_id}] update volume tarrif")
+        volume_tariff_data = session.query(
+            VolumeTariff
+        ).filter(
+            VolumeTariff.billing_id == billing_data.billing_id
+        ).all()
 
-            if volume_tariff_data:
-                for vt in volume_tariff_data:
-                    session.delete(vt)
-            
-            if req_body.volume_tariff:
-                for vt in req_body.volume_tariff:
-                    volume_tariff_data = VolumeTariff(
-                        institution_id=None,
-                        billing_id=billing_data.billing_id,
-                        min_volume=vt.get("min_vol"),
-                        max_volume=vt.get("max_vol"),
-                        rate=vt.get("rate")
-                    )
-                    session.add(volume_tariff_data)
+        if volume_tariff_data:
+            for vt in volume_tariff_data:
+                session.delete(vt)
+        
+        if req_body.volume_tariff:
+            for vt in req_body.volume_tariff:
+                volume_tariff_data = VolumeTariff(
+                    institution_id=None,
+                    billing_id=billing_data.billing_id,
+                    min_volume=vt.get("min_vol"),
+                    max_volume=vt.get("max_vol"),
+                    rate=vt.get("rate")
+                )
+                session.add(volume_tariff_data)
+
+        # flush data
+        logger.info(f"[{_id}] flush data")
+        session.flush()
+
+        # commit data
+        logger.info(f"[{_id}] commit data")
+        session.commit()
 
 
-            # flush data
-            logger.info(f"[{_id}] flush data")
-            session.flush()
+        if company_data:
 
-            # commit data
-            logger.info(f"[{_id}] commit data")
-            session.commit()
-
-
-            if company_data:
-
-                # format company data
-                logger.info(f"[{_id}] format company data")
-                company_data = CompanyMF.model_validate(company_data).model_dump()  
-                        
-            # create response data
-            logger.info(f"[{_id}] create response data")
-            _response = BaseResponse
-            _meta = BaseMeta(_id=_id, successful=True, message=None)
-            _data = company_data
-            _error = None
-            _status_code = status.HTTP_200_OK
+            # format company data
+            logger.info(f"[{_id}] format company data")
+            company_data = CompanyMF.model_validate(company_data).model_dump()  
+                    
+        # create response data
+        logger.info(f"[{_id}] create response data")
+        _response = BaseResponse
+        _meta = BaseMeta(_id=_id, successful=True, message=None)
+        _data = company_data
+        _error = None
+        _status_code = status.HTTP_200_OK
 
     # create response
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
@@ -2515,7 +2503,7 @@ def institution(
             else:
                 # create institution not found response data
                 logger.info(f"[{_id}] create institution not found response data")
-                _response_message = "institution not found"
+                _response_message = config.messages.institution_not_found
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
@@ -2563,73 +2551,73 @@ def create_institution(
         # check if user has permission to use this api
         logger.info(f"[{_id}] check if user has permission to use this api")
         if ( role_id not in (PortalRole.SUPER_ADMIN.value) ):
-
             # create unauthorized response data
             _response_message, _response, _meta, _data, _error, _status_code = generate_unauthorized_message_components(logger, config, BaseResponse, BaseMeta, BaseError, _id, status.HTTP_403_FORBIDDEN)
+            # create response 
+            return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
+    
+        # create institution object
+        logger.info(f"[{_id}] create institution object")
+        institution_data = Institution(
+            institution_name=req_body.institution_name,
+            floor_cost=req_body.floor_cost,
+            vat=req_body.vat,
+            currency_id=1,
+            billing_start_date=req_body.billing_start_date,
+            billing_end_date=req_body.billing_end_date,
+            billing_frequency_id=billing_frequency_data.billing_frequency_id,
+            billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
+        )
 
-        else:
-            # create institution object
-            logger.info(f"[{_id}] create institution object")
-            institution_data = Institution(
-                institution_name=req_body.institution_name,
-                floor_cost=req_body.floor_cost,
-                vat=req_body.vat,
-                currency_id=1,
-                billing_start_date=req_body.billing_start_date,
-                billing_end_date=req_body.billing_end_date,
-                billing_frequency_id=billing_frequency_data.billing_frequency_id,
-                billing_mode_type_id=billing_mode_type_data.billing_mode_type_id
-            )
+        try:
+            # add institution to db
+            logger.info(f"[{_id}] add institution to db")
+            session.add(institution_data)
+            # flush session
+            logger.info(f"[{_id}] flush session")
+            session.flush()
 
-            try:
-                # add institution to db
-                logger.info(f"[{_id}] add institution to db")
-                session.add(institution_data)
-                # flush session
-                logger.info(f"[{_id}] flush session")
-                session.flush()
+            # add volume tarrif to db
+            logger.info(f"[{_id}] add volume tarrif to db")
+            if req_body.volume_tariff:
+                for vt in req_body.volume_tariff:
+                    volume_tariff_data = VolumeTariff(
+                        institution_id=institution_data.institution_id,
+                        billing_id=None,
+                        min_volume=vt.get("min_vol"),
+                        max_volume=vt.get("max_vol"),
+                        rate=vt.get("rate")
+                    )
+                    session.add(volume_tariff_data)
 
-                # add volume tarrif to db
-                logger.info(f"[{_id}] add volume tarrif to db")
-                if req_body.volume_tariff:
-                    for vt in req_body.volume_tariff:
-                        volume_tariff_data = VolumeTariff(
-                            institution_id=institution_data.institution_id,
-                            billing_id=None,
-                            min_volume=vt.get("min_vol"),
-                            max_volume=vt.get("max_vol"),
-                            rate=vt.get("rate")
-                        )
-                        session.add(volume_tariff_data)
+            # commit changes to db
+            logger.info(f"[{_id}] commit changes to db")
+            session.commit()
+            # refresh data
+            logger.info(f"[{_id}] refresh data")
+            session.refresh(institution_data)
 
-                # commit changes to db
-                logger.info(f"[{_id}] commit changes to db")
-                session.commit()
-                # refresh data
-                logger.info(f"[{_id}] refresh data")
-                session.refresh(institution_data)
+            # format data
+            logger.info(f"[{_id}] format data")
+            institution_data = InstitutionMF.model_validate(institution_data).model_dump()
+            
+            # create response data
+            logger.info(f"[{_id}] create response data")
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=True, message="created")
+            _data = institution_data
+            _error = None
+            _status_code = status.HTTP_200_OK
+        except sqlalchemy.exc.IntegrityError as e:
 
-                # format data
-                logger.info(f"[{_id}] format data")
-                institution_data = InstitutionMF.model_validate(institution_data).model_dump()
-                
-                # create response data
-                logger.info(f"[{_id}] create response data")
-                _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=True, message="created")
-                _data = institution_data
-                _error = None
-                _status_code = status.HTTP_200_OK
-            except sqlalchemy.exc.IntegrityError as e:
-
-                # create user exists response data
-                logger.info(f"[{_id}] create user exists response data {e}")
-                _response_message = "user exists"
-                _response = BaseResponse
-                _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
-                _data = None
-                _error = BaseError(error_message=_response_message)
-                _status_code = status.HTTP_400_BAD_REQUEST
+            # create user exists response data
+            logger.info(f"[{_id}] create user exists response data {e}")
+            _response_message = "user exists"
+            _response = BaseResponse
+            _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
+            _data = None
+            _error = BaseError(error_message=_response_message)
+            _status_code = status.HTTP_400_BAD_REQUEST
 
     # create response 
     return get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_code, ORJSONResponse)
@@ -2722,7 +2710,7 @@ def update_institution(
             else:
                 #  create institution not found data
                 logger.info(f"[{_id}] create institution not found data")
-                _response_message = "institution not found" 
+                _response_message = config.messages.institution_not_found 
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None
@@ -2778,7 +2766,7 @@ def delete_institution(
             else:
                 #  create institution not found data
                 logger.info(f"[{_id}] create institution not found data")
-                _response_message = "institution not found" 
+                _response_message = config.messages.institution_not_found 
                 _response = BaseResponse
                 _meta = BaseMeta(_id=_id, successful=False, message=_response_message)
                 _data = None

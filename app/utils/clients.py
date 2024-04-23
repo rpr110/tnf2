@@ -176,5 +176,6 @@ class CryptographyClient:
         # Check a stored string against one provided by user
         try:
             return bcrypt.checkpw(input_string.encode('utf-8'), hashed_string)
-        except:
+        except Exception as e:
+            print(e)
             return False

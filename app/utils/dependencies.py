@@ -43,7 +43,7 @@ async def decode_jwt_token_dependancy(*, token:str=Header(...,alias="x-access-to
 
         token_email = redis_client.get_data(token)
         if not token_email:
-            raise Exception("token doesnt exist")
+            raise ValueError("token doesnt exist")
 
         decoded_token = decode_jwt_token(token)
         return decoded_token

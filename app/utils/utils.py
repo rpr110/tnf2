@@ -18,3 +18,15 @@ def get_orjson_response(logger, _id, _response, _meta, _data, _error, _status_co
     return orjson_response_class(status_code=_status_code, content=_content.model_dump())
     
  
+def get_nested_stats(query_obj, stat_dict):
+    nested_dict = {}
+    if query_obj:
+        for outer_key, inner_key, value in query_obj:
+            if outer_key not in nested_dict:
+                nested_dict[outer_key] = {}
+            nested_dict[outer_key][inner_key] = value
+
+    for k,v in nested_dict.items():
+        nested_dict[k] = stat_dict(v)
+    
+    return nested_dict
